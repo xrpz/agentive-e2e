@@ -1,0 +1,7 @@
+# agentive-unit: rl.skill.pr-feedback
+# design: spec.work_loop.pr_feedback.invocation, spec.repo_layer.files[f-pr-feedback]
+interface:
+  display_name: "pr-feedback"
+  short_description: "One pass on an open PR: fix or answer confirmed findings and human threads, fix failing checks, push once, reply"
+policy:
+  allow_implicit_invocation: true

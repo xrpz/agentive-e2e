@@ -1,0 +1,404 @@
+# agentive-unit: rl.codex.rules
+# design: spec.repo_layer.files[f-codex-rules], spec.guard.codex, UV-31
+# Experimental, best effort (Codex execpolicy prefix_rule). Rendered from .agents/guard.yaml: argv_prefix rules
+# without `*` or unless. Patterns match an exact argv prefix, so another argument order is not caught; the
+# Codex guard hook (.codex/hooks.json) and the sandbox stay the boundary. deny -> forbidden, ask -> prompt.
+# Check: .codex/rules/agentive-execpolicy-check.txt
+prefix_rule(
+    pattern = ["npm", "unpublish"],
+    decision = "forbidden",
+    justification = "BLOCKED publish: mutating publish or release command. NEXT: a human publishes and releases; use the tool's dry-run form to check the package",
+    match = [["npm", "unpublish"]],
+)
+
+prefix_rule(
+    pattern = ["gem", "push"],
+    decision = "forbidden",
+    justification = "BLOCKED publish: mutating publish or release command. NEXT: a human publishes and releases; use the tool's dry-run form to check the package",
+    match = [["gem", "push"]],
+)
+
+prefix_rule(
+    pattern = ["gem", "yank"],
+    decision = "forbidden",
+    justification = "BLOCKED publish: mutating publish or release command. NEXT: a human publishes and releases; use the tool's dry-run form to check the package",
+    match = [["gem", "yank"]],
+)
+
+prefix_rule(
+    pattern = ["dotnet", "nuget", "push"],
+    decision = "forbidden",
+    justification = "BLOCKED publish: mutating publish or release command. NEXT: a human publishes and releases; use the tool's dry-run form to check the package",
+    match = [["dotnet", "nuget", "push"]],
+)
+
+prefix_rule(
+    pattern = ["dotnet", "nuget", "delete"],
+    decision = "forbidden",
+    justification = "BLOCKED publish: mutating publish or release command. NEXT: a human publishes and releases; use the tool's dry-run form to check the package",
+    match = [["dotnet", "nuget", "delete"]],
+)
+
+prefix_rule(
+    pattern = ["twine", "upload"],
+    decision = "forbidden",
+    justification = "BLOCKED publish: mutating publish or release command. NEXT: a human publishes and releases; use the tool's dry-run form to check the package",
+    match = [["twine", "upload"]],
+)
+
+prefix_rule(
+    pattern = ["mvn", "deploy"],
+    decision = "forbidden",
+    justification = "BLOCKED publish: mutating publish or release command. NEXT: a human publishes and releases; use the tool's dry-run form to check the package",
+    match = [["mvn", "deploy"]],
+)
+
+prefix_rule(
+    pattern = ["mvn", "release:perform"],
+    decision = "forbidden",
+    justification = "BLOCKED publish: mutating publish or release command. NEXT: a human publishes and releases; use the tool's dry-run form to check the package",
+    match = [["mvn", "release:perform"]],
+)
+
+prefix_rule(
+    pattern = ["./mvnw", "deploy"],
+    decision = "forbidden",
+    justification = "BLOCKED publish: mutating publish or release command. NEXT: a human publishes and releases; use the tool's dry-run form to check the package",
+    match = [["./mvnw", "deploy"]],
+)
+
+prefix_rule(
+    pattern = ["./mvnw", "release:perform"],
+    decision = "forbidden",
+    justification = "BLOCKED publish: mutating publish or release command. NEXT: a human publishes and releases; use the tool's dry-run form to check the package",
+    match = [["./mvnw", "release:perform"]],
+)
+
+prefix_rule(
+    pattern = ["gh", "release", "create"],
+    decision = "forbidden",
+    justification = "BLOCKED publish: mutating publish or release command. NEXT: a human publishes and releases; use the tool's dry-run form to check the package",
+    match = [["gh", "release", "create"]],
+)
+
+prefix_rule(
+    pattern = ["gh", "release", "edit"],
+    decision = "forbidden",
+    justification = "BLOCKED publish: mutating publish or release command. NEXT: a human publishes and releases; use the tool's dry-run form to check the package",
+    match = [["gh", "release", "edit"]],
+)
+
+prefix_rule(
+    pattern = ["gh", "release", "upload"],
+    decision = "forbidden",
+    justification = "BLOCKED publish: mutating publish or release command. NEXT: a human publishes and releases; use the tool's dry-run form to check the package",
+    match = [["gh", "release", "upload"]],
+)
+
+prefix_rule(
+    pattern = ["gh", "release", "delete"],
+    decision = "forbidden",
+    justification = "BLOCKED publish: mutating publish or release command. NEXT: a human publishes and releases; use the tool's dry-run form to check the package",
+    match = [["gh", "release", "delete"]],
+)
+
+prefix_rule(
+    pattern = ["gh", "release", "delete-asset"],
+    decision = "forbidden",
+    justification = "BLOCKED publish: mutating publish or release command. NEXT: a human publishes and releases; use the tool's dry-run form to check the package",
+    match = [["gh", "release", "delete-asset"]],
+)
+
+prefix_rule(
+    pattern = ["docker", "push"],
+    decision = "forbidden",
+    justification = "BLOCKED publish: mutating publish or release command. NEXT: a human publishes and releases; use the tool's dry-run form to check the package",
+    match = [["docker", "push"]],
+)
+
+prefix_rule(
+    pattern = ["docker", "image", "push"],
+    decision = "forbidden",
+    justification = "BLOCKED publish: mutating publish or release command. NEXT: a human publishes and releases; use the tool's dry-run form to check the package",
+    match = [["docker", "image", "push"]],
+)
+
+prefix_rule(
+    pattern = ["docker", "compose", "push"],
+    decision = "forbidden",
+    justification = "BLOCKED publish: mutating publish or release command. NEXT: a human publishes and releases; use the tool's dry-run form to check the package",
+    match = [["docker", "compose", "push"]],
+)
+
+prefix_rule(
+    pattern = ["podman", "push"],
+    decision = "forbidden",
+    justification = "BLOCKED publish: mutating publish or release command. NEXT: a human publishes and releases; use the tool's dry-run form to check the package",
+    match = [["podman", "push"]],
+)
+
+prefix_rule(
+    pattern = ["terraform", "destroy"],
+    decision = "forbidden",
+    justification = "BLOCKED infra-destroy: destroys infrastructure or data. NEXT: a human runs destructive infrastructure commands",
+    match = [["terraform", "destroy"]],
+)
+
+prefix_rule(
+    pattern = ["terraform", "apply", "-destroy"],
+    decision = "forbidden",
+    justification = "BLOCKED infra-destroy: destroys infrastructure or data. NEXT: a human runs destructive infrastructure commands",
+    match = [["terraform", "apply", "-destroy"]],
+)
+
+prefix_rule(
+    pattern = ["pulumi", "destroy"],
+    decision = "forbidden",
+    justification = "BLOCKED infra-destroy: destroys infrastructure or data. NEXT: a human runs destructive infrastructure commands",
+    match = [["pulumi", "destroy"]],
+)
+
+prefix_rule(
+    pattern = ["cdk", "destroy"],
+    decision = "forbidden",
+    justification = "BLOCKED infra-destroy: destroys infrastructure or data. NEXT: a human runs destructive infrastructure commands",
+    match = [["cdk", "destroy"]],
+)
+
+prefix_rule(
+    pattern = ["terragrunt", "destroy"],
+    decision = "forbidden",
+    justification = "BLOCKED infra-destroy: destroys infrastructure or data. NEXT: a human runs destructive infrastructure commands",
+    match = [["terragrunt", "destroy"]],
+)
+
+prefix_rule(
+    pattern = ["kubectl", "delete", "ns"],
+    decision = "forbidden",
+    justification = "BLOCKED infra-destroy: destroys infrastructure or data. NEXT: a human runs destructive infrastructure commands",
+    match = [["kubectl", "delete", "ns"]],
+)
+
+prefix_rule(
+    pattern = ["kubectl", "delete", "namespace"],
+    decision = "forbidden",
+    justification = "BLOCKED infra-destroy: destroys infrastructure or data. NEXT: a human runs destructive infrastructure commands",
+    match = [["kubectl", "delete", "namespace"]],
+)
+
+prefix_rule(
+    pattern = ["kubectl", "delete", "pvc"],
+    decision = "forbidden",
+    justification = "BLOCKED infra-destroy: destroys infrastructure or data. NEXT: a human runs destructive infrastructure commands",
+    match = [["kubectl", "delete", "pvc"]],
+)
+
+prefix_rule(
+    pattern = ["kubectl", "delete", "pv"],
+    decision = "forbidden",
+    justification = "BLOCKED infra-destroy: destroys infrastructure or data. NEXT: a human runs destructive infrastructure commands",
+    match = [["kubectl", "delete", "pv"]],
+)
+
+prefix_rule(
+    pattern = ["dropdb"],
+    decision = "forbidden",
+    justification = "BLOCKED infra-destroy: destroys infrastructure or data. NEXT: a human runs destructive infrastructure commands",
+    match = [["dropdb"]],
+)
+
+prefix_rule(
+    pattern = ["terraform", "apply"],
+    decision = "forbidden",
+    justification = "BLOCKED infra-change: infrastructure change (infra changes are the infra team's job). NEXT: write the change as code in a PR (terraform plan / kubectl diff / helm template are allowed)",
+    match = [["terraform", "apply"]],
+)
+
+prefix_rule(
+    pattern = ["pulumi", "up"],
+    decision = "forbidden",
+    justification = "BLOCKED infra-change: infrastructure change (infra changes are the infra team's job). NEXT: write the change as code in a PR (terraform plan / kubectl diff / helm template are allowed)",
+    match = [["pulumi", "up"]],
+)
+
+prefix_rule(
+    pattern = ["cdk", "deploy"],
+    decision = "forbidden",
+    justification = "BLOCKED infra-change: infrastructure change (infra changes are the infra team's job). NEXT: write the change as code in a PR (terraform plan / kubectl diff / helm template are allowed)",
+    match = [["cdk", "deploy"]],
+)
+
+prefix_rule(
+    pattern = ["terragrunt", "apply"],
+    decision = "forbidden",
+    justification = "BLOCKED infra-change: infrastructure change (infra changes are the infra team's job). NEXT: write the change as code in a PR (terraform plan / kubectl diff / helm template are allowed)",
+    match = [["terragrunt", "apply"]],
+)
+
+prefix_rule(
+    pattern = ["kubectl", "apply"],
+    decision = "forbidden",
+    justification = "BLOCKED infra-change: infrastructure change (infra changes are the infra team's job). NEXT: write the change as code in a PR (terraform plan / kubectl diff / helm template are allowed)",
+    match = [["kubectl", "apply"]],
+)
+
+prefix_rule(
+    pattern = ["kubectl", "delete"],
+    decision = "forbidden",
+    justification = "BLOCKED infra-change: infrastructure change (infra changes are the infra team's job). NEXT: write the change as code in a PR (terraform plan / kubectl diff / helm template are allowed)",
+    match = [["kubectl", "delete"]],
+)
+
+prefix_rule(
+    pattern = ["kubectl", "create"],
+    decision = "forbidden",
+    justification = "BLOCKED infra-change: infrastructure change (infra changes are the infra team's job). NEXT: write the change as code in a PR (terraform plan / kubectl diff / helm template are allowed)",
+    match = [["kubectl", "create"]],
+)
+
+prefix_rule(
+    pattern = ["kubectl", "replace"],
+    decision = "forbidden",
+    justification = "BLOCKED infra-change: infrastructure change (infra changes are the infra team's job). NEXT: write the change as code in a PR (terraform plan / kubectl diff / helm template are allowed)",
+    match = [["kubectl", "replace"]],
+)
+
+prefix_rule(
+    pattern = ["kubectl", "patch"],
+    decision = "forbidden",
+    justification = "BLOCKED infra-change: infrastructure change (infra changes are the infra team's job). NEXT: write the change as code in a PR (terraform plan / kubectl diff / helm template are allowed)",
+    match = [["kubectl", "patch"]],
+)
+
+prefix_rule(
+    pattern = ["kubectl", "scale"],
+    decision = "forbidden",
+    justification = "BLOCKED infra-change: infrastructure change (infra changes are the infra team's job). NEXT: write the change as code in a PR (terraform plan / kubectl diff / helm template are allowed)",
+    match = [["kubectl", "scale"]],
+)
+
+prefix_rule(
+    pattern = ["kubectl", "rollout", "restart"],
+    decision = "forbidden",
+    justification = "BLOCKED infra-change: infrastructure change (infra changes are the infra team's job). NEXT: write the change as code in a PR (terraform plan / kubectl diff / helm template are allowed)",
+    match = [["kubectl", "rollout", "restart"]],
+)
+
+prefix_rule(
+    pattern = ["helm", "install"],
+    decision = "forbidden",
+    justification = "BLOCKED infra-change: infrastructure change (infra changes are the infra team's job). NEXT: write the change as code in a PR (terraform plan / kubectl diff / helm template are allowed)",
+    match = [["helm", "install"]],
+)
+
+prefix_rule(
+    pattern = ["helm", "upgrade"],
+    decision = "forbidden",
+    justification = "BLOCKED infra-change: infrastructure change (infra changes are the infra team's job). NEXT: write the change as code in a PR (terraform plan / kubectl diff / helm template are allowed)",
+    match = [["helm", "upgrade"]],
+)
+
+prefix_rule(
+    pattern = ["helm", "uninstall"],
+    decision = "forbidden",
+    justification = "BLOCKED infra-change: infrastructure change (infra changes are the infra team's job). NEXT: write the change as code in a PR (terraform plan / kubectl diff / helm template are allowed)",
+    match = [["helm", "uninstall"]],
+)
+
+prefix_rule(
+    pattern = ["helm", "rollback"],
+    decision = "forbidden",
+    justification = "BLOCKED infra-change: infrastructure change (infra changes are the infra team's job). NEXT: write the change as code in a PR (terraform plan / kubectl diff / helm template are allowed)",
+    match = [["helm", "rollback"]],
+)
+
+prefix_rule(
+    pattern = ["gh", "pr", "merge"],
+    decision = "forbidden",
+    justification = "BLOCKED gh-pr-merge: agents do not merge PRs: tier 2 is merged by a human and tier 0/1 auto-merge is enabled only by the gate job. NEXT: leave the merge to the human or the agentive-review-gate job",
+    match = [["gh", "pr", "merge"]],
+)
+
+prefix_rule(
+    pattern = ["git", "reset", "--hard"],
+    decision = "prompt",
+    justification = "BLOCKED reset-hard: discards uncommitted work. NEXT: ask the human, or commit or stash the work first",
+    match = [["git", "reset", "--hard"]],
+)
+
+prefix_rule(
+    pattern = ["git", "checkout", "--", "."],
+    decision = "prompt",
+    justification = "BLOCKED reset-hard: discards uncommitted work. NEXT: ask the human, or commit or stash the work first",
+    match = [["git", "checkout", "--", "."]],
+)
+
+prefix_rule(
+    pattern = ["git", "restore", "."],
+    decision = "prompt",
+    justification = "BLOCKED reset-hard: discards uncommitted work. NEXT: ask the human, or commit or stash the work first",
+    match = [["git", "restore", "."]],
+)
+
+prefix_rule(
+    pattern = ["git", "stash", "drop"],
+    decision = "prompt",
+    justification = "BLOCKED reset-hard: discards uncommitted work. NEXT: ask the human, or commit or stash the work first",
+    match = [["git", "stash", "drop"]],
+)
+
+prefix_rule(
+    pattern = ["git", "stash", "clear"],
+    decision = "prompt",
+    justification = "BLOCKED reset-hard: discards uncommitted work. NEXT: ask the human, or commit or stash the work first",
+    match = [["git", "stash", "clear"]],
+)
+
+prefix_rule(
+    pattern = ["git", "push", "--delete"],
+    decision = "prompt",
+    justification = "BLOCKED push-delete: deletes or rewrites remote refs. NEXT: ask the human before deleting remote branches",
+    match = [["git", "push", "--delete"]],
+)
+
+prefix_rule(
+    pattern = ["git", "push", "-d"],
+    decision = "prompt",
+    justification = "BLOCKED push-delete: deletes or rewrites remote refs. NEXT: ask the human before deleting remote branches",
+    match = [["git", "push", "-d"]],
+)
+
+prefix_rule(
+    pattern = ["git", "push", "--mirror"],
+    decision = "prompt",
+    justification = "BLOCKED push-delete: deletes or rewrites remote refs. NEXT: ask the human before deleting remote branches",
+    match = [["git", "push", "--mirror"]],
+)
+
+prefix_rule(
+    pattern = ["git", "push", "--prune"],
+    decision = "prompt",
+    justification = "BLOCKED push-delete: deletes or rewrites remote refs. NEXT: ask the human before deleting remote branches",
+    match = [["git", "push", "--prune"]],
+)
+
+prefix_rule(
+    pattern = ["git", "branch", "-D"],
+    decision = "prompt",
+    justification = "BLOCKED branch-delete: force-deletes a local branch. NEXT: ask the human, or use git branch -d (merged branches only)",
+    match = [["git", "branch", "-D"]],
+)
+
+prefix_rule(
+    pattern = ["git", "branch", "--delete", "--force"],
+    decision = "prompt",
+    justification = "BLOCKED branch-delete: force-deletes a local branch. NEXT: ask the human, or use git branch -d (merged branches only)",
+    match = [["git", "branch", "--delete", "--force"]],
+)
+
+prefix_rule(
+    pattern = ["git", "branch", "-d", "-f"],
+    decision = "prompt",
+    justification = "BLOCKED branch-delete: force-deletes a local branch. NEXT: ask the human, or use git branch -d (merged branches only)",
+    match = [["git", "branch", "-d", "-f"]],
+)

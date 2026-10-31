@@ -1,0 +1,81 @@
+{
+  "description": "agentive repo-layer hooks (rendered by /agentive:init and $agentive-init from .agents/guard.yaml and the agentive manifest). Guard hooks emit deny only: Codex PreToolUse ask is not implemented (fail-open). Trust them once in /hooks.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.agents/hooks/session-start-notice.py\" --tool codex",
+            "commandWindows": "python3 .agents/hooks/session-start-notice.py --tool codex",
+            "timeout": 30,
+            "additionalContextLimit": 10000
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.agents/hooks/pre-tool-use-guard.py\" --tool codex",
+            "commandWindows": "python3 .agents/hooks/pre-tool-use-guard.py --tool codex",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.agents/hooks/pre-tool-use-context-gate.py\" --tool codex",
+            "commandWindows": "python3 .agents/hooks/pre-tool-use-context-gate.py --tool codex",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.agents/hooks/pre-tool-use-test-rewrite.py\" --tool codex",
+            "commandWindows": "python3 .agents/hooks/pre-tool-use-test-rewrite.py --tool codex",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "apply_patch|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.agents/hooks/post-tool-use-lint.py\" --tool codex",
+            "commandWindows": "python3 .agents/hooks/post-tool-use-lint.py --tool codex",
+            "timeout": 300
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.agents/hooks/stop-verify.py\" --tool codex",
+            "commandWindows": "python3 .agents/hooks/stop-verify.py --tool codex",
+            "timeout": 1800
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.agents/hooks/session-end-harvest.py\" --tool codex",
+            "commandWindows": "python3 .agents/hooks/session-end-harvest.py --tool codex",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  }
+}

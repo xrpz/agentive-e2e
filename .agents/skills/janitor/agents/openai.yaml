@@ -1,0 +1,7 @@
+# agentive-unit: rl.skill.janitor
+# design: spec.plugin.invocation.repo_skills, spec.repo_layer.files[f-janitor], spec.maintenance.janitor
+interface:
+  display_name: "janitor"
+  short_description: "Default-off cleanup: per configured kind, fix up to batch_max sensor items and open one labeled tier 2 PR"
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,649 @@
+# agentive manifest (.agents/manifest.yaml): written by /agentive:init, /agentive:update and /agentive:reprove
+# (schema manifest). Do not edit by hand except pinned values; state a value to the agent instead.
+schema_version: 1
+framework:
+  plugin: agentive
+  version: "0.1.0"
+  init_tool: claude
+verbs:
+  setup:
+    cmd: uv sync --frozen
+    tier: outer
+    evidence:
+      rank: 1
+      source: uv.lock
+      files:
+        - pyproject.toml
+        - uv.lock
+    proof:
+      pass_run_id: proof-setup-pass-20261031T091038723843Z
+      at: "2026-10-31T09:10:44Z"
+  build:
+    cmd: uv build
+    tier: outer
+    evidence:
+      rank: 1
+      source: "pyproject.toml [build-system]"
+      files:
+        - pyproject.toml
+        - uv.lock
+    proof:
+      pass_run_id: proof-build-pass-20261031T091046507033Z
+      at: "2026-10-31T09:10:47Z"
+  lint:
+    cmd: "uv run ruff check --extend-exclude .agents,.claude,.codex ."
+    tier: inner
+    evidence:
+      rank: 1
+      source: ruff configuration
+      files:
+        - pyproject.toml
+        - uv.lock
+    exts:
+      - .py
+    file_args: true
+    proof:
+      pass_run_id: proof-lint-pass-20261031T091044970919Z
+      at: "2026-10-31T09:10:46Z"
+      seeded_fail_run_id: proof-lint-seeded-20261031T091046442293Z
+  typecheck:
+    status: pending
+    reason: no_evidence
+  test:
+    cmd: uv run pytest
+    tier: inner
+    evidence:
+      rank: 1
+      source: pyproject.toml (pytest)
+      files:
+        - pyproject.toml
+        - uv.lock
+    proof:
+      pass_run_id: proof-test-pass-20261031T091047876595Z
+      at: "2026-10-31T09:10:48Z"
+      seeded_fail_run_id: proof-test-seeded-20261031T091048594090Z
+    fail_count: "^FAILED "
+  verify:
+    cmd: .agents/bin/verb verify
+    tier: inner
+    evidence:
+      rank: 4
+      source: framework
+      files:
+        - .agents/manifest.yaml
+    proof:
+      pass_run_id: proof-verify-derived-20261031T091048859509Z
+      at: "2026-10-31T09:10:48Z"
+  run:
+    status: pending
+    reason: no_evidence
+paths:
+  src:
+    - path: src
+      proof: exists
+  tests:
+    - path: tests
+      proof: exists
+  generated: []
+  vendor: []
+capabilities:
+  T1:
+    result: skipped
+    measured:
+      mode: symlink
+      rule: core.symlinks=false or Windows -> copy without probing
+    fallback_applied: false
+    tool:
+      name: claude_code
+      version: "2.1.316"
+    at: "2026-10-31T09:10:37Z"
+tools:
+  claude_code:
+    version: "2.1.316"
+    plugin:
+      name: agentive
+      version: "0.1.0"
+stop_conditions:
+  max_blocks: 8
+  no_progress_rounds: 2
+context:
+  read_limit_bytes: 65536
+generated:
+  .agents/agents/classifier.md:
+    kind: file
+    sha256: "0c72b8538b24f03cf2505b7788e016cda5ed3333fdcc1360476e4664f874640d"
+    framework_version: "0.1.0"
+  .agents/agents/coordinator.md:
+    kind: file
+    sha256: "1949a53c946678e796c6c88738f06e38d8c156e6d941f672bf1cf76d876f8b06"
+    framework_version: "0.1.0"
+  .agents/agents/correctness-reviewer.md:
+    kind: file
+    sha256: "361508e60c2a5654b7bc0fedcda7c1ab5a1b6ce8c037aa98edfa3970d02ec3e6"
+    framework_version: "0.1.0"
+  .agents/agents/raise-only.md:
+    kind: file
+    sha256: "19cb7e16c854519c5c0334ece7826cc28c1e9d0e80a525839e178f5277443b71"
+    framework_version: "0.1.0"
+  .agents/agents/security-reviewer.md:
+    kind: file
+    sha256: "6ae925090827d5d2994e836c30a26d52c522bb66be525c6d39f2d28b3d49e25d"
+    framework_version: "0.1.0"
+  .agents/agents/testing-reviewer.md:
+    kind: file
+    sha256: "210b024c40303870223c8cbb35600932635d400265c2497b4c5ad4a4af4758e2"
+    framework_version: "0.1.0"
+  .agents/agents/verifier.md:
+    kind: file
+    sha256: "3d3555f629e3268a1d1419ae12361adec7fbfa007c043744d03569441927d33c"
+    framework_version: "0.1.0"
+  .agents/bin/agentive-lint:
+    kind: file
+    sha256: e959c4202ad3663ed061f17ae7df8bb5c96a1855fa10ba1897c0764742d5a6ed
+    framework_version: "0.1.0"
+  .agents/bin/agentive-review:
+    kind: file
+    sha256: "4bb4b7d8a86a4654e9e21c2e69ce71e4c055abb7f1555949f74b690afd01170b"
+    framework_version: "0.1.0"
+  .agents/bin/agentive-reviewer-eval:
+    kind: file
+    sha256: "922275913bcfab970536d8db15cab4eb4650c01f4d1e8d3a3110dc7c11ffeb83"
+    framework_version: "0.1.0"
+  .agents/bin/verb:
+    kind: file
+    sha256: b29bea6af507430928e6c15dad93c13ceecab1ec56e10e28505c843eb5d9305a
+    framework_version: "0.1.0"
+  .agents/compat.yaml:
+    kind: file
+    sha256: "1a1f278989020a15e45ad57a1ef7ec032fb829c9b3fa87f56a3d5c621d3279a0"
+    framework_version: "0.1.0"
+  .agents/guard.yaml:
+    kind: file
+    sha256: "635d34693c65b1edb71117a2a85367c20f9adebb4cc2cfa4edfbec22436a24b2"
+    framework_version: "0.1.0"
+  .agents/hooks/file-changed-dirty.py:
+    kind: file
+    sha256: "367f354194dfc05e5ceca9e78982b553698a86aea682b38d364b65e727d42886"
+    framework_version: "0.1.0"
+  .agents/hooks/post-tool-use-lint.py:
+    kind: file
+    sha256: "75a1d318c03e249bfb9d0557cd3b51f881f0e3072b55ed09ce3875286e02a015"
+    framework_version: "0.1.0"
+  .agents/hooks/pre-tool-use-context-gate.py:
+    kind: file
+    sha256: cf80685b814d18fa8db22dc0c85ea54932dfb8ed482b2570f2c9e9ac30f41c9c
+    framework_version: "0.1.0"
+  .agents/hooks/pre-tool-use-guard.py:
+    kind: file
+    sha256: de85596293a558e1ffa6a784e514abc7c7e5b44b0679478b7b1d53c8f5aabb0e
+    framework_version: "0.1.0"
+  .agents/hooks/pre-tool-use-test-rewrite.py:
+    kind: file
+    sha256: d0d0c7b0afd9e112e1f159a60c122acab50d9dd274e59a76ebd4a6652bda4cda
+    framework_version: "0.1.0"
+  .agents/hooks/session-end-harvest.py:
+    kind: file
+    sha256: "387d8459c166025bc02d00450b978abfa2558ac962141fca920d9d7084b8cc68"
+    framework_version: "0.1.0"
+  .agents/hooks/session-start-notice.py:
+    kind: file
+    sha256: b1f925253fe50a422bf67aff9da9c277c11cef7b020336b5041dac09177774fb
+    framework_version: "0.1.0"
+  .agents/hooks/stop-verify.py:
+    kind: file
+    sha256: a5134915654ac690c41c090ff7aee61f79a5565c3aece6058a8dab82e61b2b6a
+    framework_version: "0.1.0"
+  .agents/hooks/subagent-observe.py:
+    kind: file
+    sha256: b01b76cc450ed0f3b6c2347d1a89b0894487b5a7d4dd13603aa80160098f42a6
+    framework_version: "0.1.0"
+  .agents/lib/agentive/__init__.py:
+    kind: file
+    sha256: "559b1c25918545ec321091272e6fcc1c8722a2a6d31509899e47765403be924e"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/ayaml.py:
+    kind: file
+    sha256: e36e0c17dee0b4932b426d796e17fb274a683719fb07aa45228102d7287b8085
+    framework_version: "0.1.0"
+  .agents/lib/agentive/common.py:
+    kind: file
+    sha256: "14258badad21c92b9f68688dd5f15e9d15c9ac41be934e325147cdd1df22d439"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/distillq.py:
+    kind: file
+    sha256: "45ac2555a5c55df145b8f4b1fdee27a30502033122608eb7ee2824449eda5c0d"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/gates.py:
+    kind: file
+    sha256: "7ff3ef81ee78029352035fc844dea75a85d980977b1d4def3288191c5d23c92d"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/gitgh.py:
+    kind: file
+    sha256: "86010a0dd9c9ba80617d888cbcac227334c8569ebc0eaf89ff6f9fb328fb366b"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/guard.py:
+    kind: file
+    sha256: "2b17a885362f48c852a60a325a1e50d5df303836d9b6ebd3efa10f8a938aa8d9"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/handoff.py:
+    kind: file
+    sha256: "4095abed775f60fd9de0870ac4f5ac2dde13fd42f38d7f2ca88f0d12f2bcc63c"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/hookio.py:
+    kind: file
+    sha256: "94b7ca69d0038cd12df9b03af9be795383f527f3fec6e4cdfff5e9a40602e9f5"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/lint/__init__.py:
+    kind: file
+    sha256: "8f0d607f834b8752b739f8809b1a15e9d62abf1cceb99d2bb64acb9d9a1f04d2"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/lint/checks.py:
+    kind: file
+    sha256: "0a6983657d9f83aad6eea63a7abc2143717d15a2733a12ef29a819036e0d41ec"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/lintscope.py:
+    kind: file
+    sha256: "401c75065a4f10ce6ff2ece8ee7d97085ee4174ab8f3eb01f1daa07360e4aef8"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/nohuman.py:
+    kind: file
+    sha256: "7e3aa7a7f5f30213e151841bacae6db5e21d5967e4d747a3b2ed25d0d151b12d"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/prbody.py:
+    kind: file
+    sha256: "10584ae3e5224b5262dcb84f582614aaab1427d15df8dd6a57f75357683711d6"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/prstate.py:
+    kind: file
+    sha256: "9e77e5c0df3fe39144ef58a9d1c068f198d91865aba606a7e43afc4808c73db0"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/review/__init__.py:
+    kind: file
+    sha256: "02b22dade31c2d2857c6da7184c6f008624ca663fd859ed494cc818ef7712171"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/review/attest.py:
+    kind: file
+    sha256: "9ef3e472e69ad65d99b9f95a07d89722bf54ddca1e4554e0a93f528c61fcadd9"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/review/config.py:
+    kind: file
+    sha256: a1b88302c72b9d1d1e0d362a7410310ca6bed0eaa10ea00304ec53fa712eb90a
+    framework_version: "0.1.0"
+  .agents/lib/agentive/review/evals.py:
+    kind: file
+    sha256: "00f52208c5cc0fc0208cc45f5e2b9c887d47969819665a5f586f6e1acdbaf555"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/review/findings.py:
+    kind: file
+    sha256: "5d07393d0e3e248adf6818ab694692169eb69293b87815488c8422f55a3cbb10"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/review/github.py:
+    kind: file
+    sha256: "2380f774de282791a610ec1f90ec2c3a4287157eef554d1c2a302dc6efed2d48"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/review/gitio.py:
+    kind: file
+    sha256: "2980c60b2660af8e32724e4bf832387d19a09e8ecd120d434aeccc5f51c41059"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/review/independence.py:
+    kind: file
+    sha256: "3870d5747ce6368c0de62d91a5ea55efe4b6047d561b1af68b03dd2209a17332"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/review/killswitch.py:
+    kind: file
+    sha256: "521c94bcab1ab8fb739a8ece11219071097b8ac8d330d7b859aa69bedc8c7b6b"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/review/llmstate.py:
+    kind: file
+    sha256: f6d59484cf1dccb9489fee9fe326c392bf2a24b3888426da680b9bc33278bf9b
+    framework_version: "0.1.0"
+  .agents/lib/agentive/review/pipeline.py:
+    kind: file
+    sha256: "34be763412250a341a0eb83027eb39fd538a1939d60cd923e86d0084bab74cec"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/review/post.py:
+    kind: file
+    sha256: f8a7ac738b90fcf162716674b4e21d99bfbda3df01677b8c62df61de9aa00408
+    framework_version: "0.1.0"
+  .agents/lib/agentive/review/pr_body.py:
+    kind: file
+    sha256: "76b7489894d13bfcd09a5432721407670d13e7d89f51d8d509075f62a48179f4"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/review/rv1.py:
+    kind: file
+    sha256: "1a5ad47e91224518dc1ced0539c56685bd94710542fc1a58e3ad3942cffb067e"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/review/rv2.py:
+    kind: file
+    sha256: "5d4a6502fc884c220ea87bf76e05de4f7f379580dd4993286b5fc28c3c9671bc"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/review/rv3.py:
+    kind: file
+    sha256: f56a672c6e316f73b0889b6a25aca4bf7c28bf6d5a478ced9cbeecb1a1077593
+    framework_version: "0.1.0"
+  .agents/lib/agentive/review/rv4.py:
+    kind: file
+    sha256: "2b3abfdd02dc259fd56a014058e0f54f233191425cee3e006000a1c2debe3efe"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/review/rv7b.py:
+    kind: file
+    sha256: d596a217b5ccb82e150783e93aed143108e321e13703a73780db665199b7b611
+    framework_version: "0.1.0"
+  .agents/lib/agentive/review/rv8.py:
+    kind: file
+    sha256: "7a8407a07bee809863c8925852377963395c1c3dd6c06eba1ce8ed4450da949c"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/review/secpaths.py:
+    kind: file
+    sha256: "3e42e349879e53629b2c0e6f5f19950e3b2a682aa900404b74ad4ed6335da90c"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/review/settings.py:
+    kind: file
+    sha256: "68b25f08a049b0bf6d70df1818a6e44eeb166a6b44a263866768ee27f3ec9e1b"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/review/tasks.py:
+    kind: file
+    sha256: a6fa0ecbfaf22add89b8ff94d6db517a5838b272c40b64ba0a41237b6e5bc3d9
+    framework_version: "0.1.0"
+  .agents/lib/agentive/review/util.py:
+    kind: file
+    sha256: "2fa4338569fe37984c7fa908d4ca6515e25ddc88d7cba3049a99f275e4be3363"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/rulesync.py:
+    kind: file
+    sha256: "58587d9dc54b789b66b76d6d4d1f086c4ed9710c6f4e6da57c3bbd88de5a3b1f"
+    framework_version: "0.1.0"
+  .agents/lib/agentive/state.py:
+    kind: file
+    sha256: e5686c6accbc4da628a16de8c4000619a0341e8a77a02dee1946609240380d8e
+    framework_version: "0.1.0"
+  .agents/lib/agentive/verb.py:
+    kind: file
+    sha256: "6df0931aec12e60ec53f21c43ffa48819c4b35ffc99ff80caa59a792b195d1b7"
+    framework_version: "0.1.0"
+  .agents/rubric.yaml:
+    kind: file
+    sha256: fdc1396bf0bbe5cb5ee66dc3a0d51f1f6516ab45aba62bb24ac16a9a4d4c2c26
+    framework_version: "0.1.0"
+  .agents/skills/chain-intent/SKILL.md:
+    kind: file
+    sha256: "988ac09d150dd387687f30af5b57dfb51a41dd07d1d4847e411f0565dc21d726"
+    framework_version: "0.1.0"
+  .agents/skills/chain-intent/agents/openai.yaml:
+    kind: file
+    sha256: "4311b2de34d09d01cf0214b5917777dc7645959872d2743d30d8b5c77bf0330f"
+    framework_version: "0.1.0"
+  .agents/skills/chain-intent/scripts/stage-check.sh:
+    kind: file
+    sha256: af5f37a0aaeef26d2e0538415626a6219d33463d13d82904b6e916fe9be99833
+    framework_version: "0.1.0"
+  .agents/skills/chain-intent/templates/intent.md:
+    kind: file
+    sha256: a3e3b0898442f3ba9e4b9b2977f5eab7780eb9d469c4134f3f2942e643d4f02d
+    framework_version: "0.1.0"
+  .agents/skills/chain-plan/SKILL.md:
+    kind: file
+    sha256: "87a522528778f0607e48a317d4a0a2bda83edc6c40cb47bac5ac02ee76cd3d08"
+    framework_version: "0.1.0"
+  .agents/skills/chain-plan/agents/openai.yaml:
+    kind: file
+    sha256: "5e9869b3b74cf9a807f1ef1b430c62474b878746c5eae95f4ecf7b48b89e53f9"
+    framework_version: "0.1.0"
+  .agents/skills/chain-plan/scripts/stage-check.sh:
+    kind: file
+    sha256: "16f79040d8af25d116a03029264472016b01419de99feffe6c521ff445da5136"
+    framework_version: "0.1.0"
+  .agents/skills/chain-plan/templates/plan.md:
+    kind: file
+    sha256: "708a4e94b5ea59ba1007164d60555d1291d98731c3b3b23c08d3560109d6dd26"
+    framework_version: "0.1.0"
+  .agents/skills/chain-spec/SKILL.md:
+    kind: file
+    sha256: "4ebcc3216052c426535c3c278513858b1cea7a4fccfa7c54f637951ba15c87c2"
+    framework_version: "0.1.0"
+  .agents/skills/chain-spec/agents/openai.yaml:
+    kind: file
+    sha256: "3bca5b720febc7d27e3ba4c16b7f5247254f72132d294816d71a7d7b06ac7adb"
+    framework_version: "0.1.0"
+  .agents/skills/chain-spec/scripts/handoff.sh:
+    kind: file
+    sha256: afc27cc1c0847c05d18170834144dda96f71e1df091dde77da315d2659b8012f
+    framework_version: "0.1.0"
+  .agents/skills/chain-spec/scripts/stage-check.sh:
+    kind: file
+    sha256: "31cc51ecacfb031ae11e2515d238801ccc63568df2065aef71f8d00bf8de3f58"
+    framework_version: "0.1.0"
+  .agents/skills/chain-spec/templates/spec.md:
+    kind: file
+    sha256: "21c9d0c906e4a48fdcac306fb01603ae834694a43639112f2730c6fd50d3419f"
+    framework_version: "0.1.0"
+  .agents/skills/distill/SKILL.md:
+    kind: file
+    sha256: "4d8b7f2fb615ced482b22b3f3450e3520d6430d9e6a7921be2eab70424fc83d5"
+    framework_version: "0.1.0"
+  .agents/skills/distill/agents/openai.yaml:
+    kind: file
+    sha256: f03adac68ed73eedb9bdc6cabd88d806ba27068e2a7c44e7fc97161fc5cb4b0d
+    framework_version: "0.1.0"
+  .agents/skills/distill/scripts/queue-read.sh:
+    kind: file
+    sha256: "7cbb3d88fffaba0aa357c65660fcd6c7f79a3b029b3af1aeaafd0ad8917ac38c"
+    framework_version: "0.1.0"
+  .agents/skills/janitor/SKILL.md:
+    kind: file
+    sha256: "31b59a3b3a88830c344bde17f6297a5307b8997fc63be0d7ab0375a8e46d8843"
+    framework_version: "0.1.0"
+  .agents/skills/janitor/agents/openai.yaml:
+    kind: file
+    sha256: "178247119e091962625c52854015280b6d9fc4b06c8c3e8784dd9c7d12a78225"
+    framework_version: "0.1.0"
+  .agents/skills/janitor/scripts/gate.sh:
+    kind: file
+    sha256: d2ed4cadffae7d0277f34beb8c3fbf97aacbf2e2145af8dd9be28ebd1d28d96b
+    framework_version: "0.1.0"
+  .agents/skills/pr-feedback/SKILL.md:
+    kind: file
+    sha256: d606de863a89f2856841be5702a2b33ed562c331a603fecbaf9f6fb2ab05c83d
+    framework_version: "0.1.0"
+  .agents/skills/pr-feedback/agents/openai.yaml:
+    kind: file
+    sha256: d233db98a394824ebd62f3b1ffbd3ea86dfc8cbbb4e22624c46804fabd18f826
+    framework_version: "0.1.0"
+  .agents/skills/pr-feedback/scripts/pr-state.sh:
+    kind: file
+    sha256: "8bb20bc64f8cb79021e5a5360974bfa5f1507993f27c25ed43cdf4563fa09a5b"
+    framework_version: "0.1.0"
+  .agents/skills/pr/SKILL.md:
+    kind: file
+    sha256: "09353975dc370ba929f61407b1ec28d0f83a9709c0851d76aec0537192ba2f3d"
+    framework_version: "0.1.0"
+  .agents/skills/pr/agents/openai.yaml:
+    kind: file
+    sha256: "06a813d59b94df4e31477cf14dda06a85c1e69a331527c60dedbd2fe9b6d968a"
+    framework_version: "0.1.0"
+  .agents/skills/pr/scripts/pr-body.sh:
+    kind: file
+    sha256: "070c3e75a1b9ded181189ca08c873ebd44db0360fd430c895e38a698f4cea21a"
+    framework_version: "0.1.0"
+  .agents/skills/precommit-review/SKILL.md:
+    kind: file
+    sha256: "3afd85599095e882bdeab27fca6c47c4ec66d44978210bc32808cc6e0dd91ffd"
+    framework_version: "0.1.0"
+  .agents/skills/precommit-review/agents/openai.yaml:
+    kind: file
+    sha256: "60900bb95ad301920a8f10ea3850a13896eaa44586b326565b776a494d475cd8"
+    framework_version: "0.1.0"
+  .agents/skills/verify/SKILL.md:
+    kind: file
+    sha256: "110a7e249c41a9fd1c119547d5ac8540f41b06afed3aad78de1534eebeb0f6d5"
+    framework_version: "0.1.0"
+  .agents/skills/verify/agents/openai.yaml:
+    kind: file
+    sha256: cd0b47e83d38882160200d387a292d67682fbf900221a4ed04c12d76618ed929
+    framework_version: "0.1.0"
+  .claude/agents/classifier.md:
+    kind: file
+    sha256: "67045f7241d2d29aef9558ad5ba05c41a3a2f72b23f06852ba0788e96c16cc13"
+    framework_version: "0.1.0"
+  .claude/agents/coordinator.md:
+    kind: file
+    sha256: "089eb1185fea91b0bd0486423ff6e83d9e6bcd9efbcaa4ec5cf65ad35c755f7d"
+    framework_version: "0.1.0"
+  .claude/agents/correctness-reviewer.md:
+    kind: file
+    sha256: a0f5f8e9cc078457a7f58743d3f70e717c38e8b11cd8b70f97387d81a8afb555
+    framework_version: "0.1.0"
+  .claude/agents/raise-only.md:
+    kind: file
+    sha256: "1f98127410965c0599cd289dd1227642d7e7863dd19432aa874234e64f1c5c3c"
+    framework_version: "0.1.0"
+  .claude/agents/security-reviewer.md:
+    kind: file
+    sha256: "4e3429c68da33fcf7d2f1d6ea19cb1e7cf2f44768c00e729fbbfeec728ac86e5"
+    framework_version: "0.1.0"
+  .claude/agents/testing-reviewer.md:
+    kind: file
+    sha256: d30781a60977bf8d2e3c3efe87e2945f567d38ce6ceae5c22441ea837ad3f564
+    framework_version: "0.1.0"
+  .claude/agents/verifier.md:
+    kind: file
+    sha256: "8688977de49a1d2447eb7fcef92acc10c2e2a9063e9d3f814c7172562c54a7a6"
+    framework_version: "0.1.0"
+  .claude/settings.json:
+    kind: file
+    sha256: "2fff3ada93d75575fdfc9bc7da2165e3f0a387072721364f29304aaf8724fe44"
+    framework_version: "0.1.0"
+    owned:
+      - hooks
+      - permissions
+      - sandbox
+      - plansDirectory
+      - env
+  .claude/skills/chain-intent:
+    kind: file
+    sha256: "27833f3d3b5a54c9c8156b79afdaf215e4d92f452a39482ba7e07f42cb4f7b8b"
+    framework_version: "0.1.0"
+  .claude/skills/chain-plan:
+    kind: file
+    sha256: "62563bd07a55d35bdf2fba5527fa429dfc2fbeec2c9935db468cc3c652928876"
+    framework_version: "0.1.0"
+  .claude/skills/chain-spec:
+    kind: file
+    sha256: beb9c040af7df5c900d99a291e4b96d6fd0488ab77f64fb58c8b6a85cce368cc
+    framework_version: "0.1.0"
+  .claude/skills/distill:
+    kind: file
+    sha256: "3e79b97a087da37113ba3dbfebcde0fe976f7a2b7a3b4a557fa870311a354078"
+    framework_version: "0.1.0"
+  .claude/skills/janitor:
+    kind: file
+    sha256: "3249ab6b77a88872806f62dec57595fe1bf713dcaf99382aab429d5fa0289d54"
+    framework_version: "0.1.0"
+  .claude/skills/pr:
+    kind: file
+    sha256: "350597d3ece161739b636e734a60742396bc91a6bbf87df1405650750466515c"
+    framework_version: "0.1.0"
+  .claude/skills/pr-feedback:
+    kind: file
+    sha256: "4c55a514db00668461a9e2ff9458a22a59f8655fd612565281b72e505e5e7be9"
+    framework_version: "0.1.0"
+  .claude/skills/precommit-review:
+    kind: file
+    sha256: "1cccc96533ba9eeec02ed9895c71e34e05700a84b3932105140ef80c292bf40f"
+    framework_version: "0.1.0"
+  .claude/skills/verify:
+    kind: file
+    sha256: a2e411993891322e779afbb778d7060dd555fe68da769299b47d6f99e193ef3a
+    framework_version: "0.1.0"
+  .codex/agents/classifier.toml:
+    kind: file
+    sha256: "45fda2be0857d77643c80052d3ec42c954fd9a036a6d076dd67e15e19c8829db"
+    framework_version: "0.1.0"
+  .codex/agents/coordinator.toml:
+    kind: file
+    sha256: e11748c41781008aa3afd049e50ff1f454223b5557a09923dc300e8a97a5e11d
+    framework_version: "0.1.0"
+  .codex/agents/correctness-reviewer.toml:
+    kind: file
+    sha256: cef6681056e49d0bdeb39a084cdf363904e72f586c5f022c80d6f323f011065a
+    framework_version: "0.1.0"
+  .codex/agents/raise-only.toml:
+    kind: file
+    sha256: ab55352dd13e2af214b09938ba6db069ac50b86b2f4bd6761f1728e35d5faaad
+    framework_version: "0.1.0"
+  .codex/agents/security-reviewer.toml:
+    kind: file
+    sha256: "4e1cedbafee16e853327d58d5012b769baeb29937244181624f26eb92ee34208"
+    framework_version: "0.1.0"
+  .codex/agents/testing-reviewer.toml:
+    kind: file
+    sha256: "47d6653ce309362c2fd042fe024444f71ad6c59a7682f755e63049608e73f38d"
+    framework_version: "0.1.0"
+  .codex/agents/verifier.toml:
+    kind: file
+    sha256: b72c717003fc4de759f319ebc10115e58bf69d26ba737cb1df78f3b4cf26bf9b
+    framework_version: "0.1.0"
+  .codex/config.toml:
+    kind: file
+    sha256: bbf80a0553a34d8fa10879259a13aec6e73b10b56151640377af4569d6219674
+    framework_version: "0.1.0"
+  .codex/hooks.json:
+    kind: file
+    sha256: "62b44b76bc60827452afb4568986628a4cd2f45aab7d766944057a10d9ca5f9c"
+    framework_version: "0.1.0"
+    owned:
+      - hooks
+  .codex/rules/agentive-execpolicy-check.txt:
+    kind: file
+    sha256: "64750cdb98c2db4756aa999e2a5b5f6095147bd11e8e0219ae8e6620046b3f8e"
+    framework_version: "0.1.0"
+  .codex/rules/agentive.rules:
+    kind: file
+    sha256: "82c99ff2c180376f8aeed0d11be64595168b84006f444cd0d62342e5f990feec"
+    framework_version: "0.1.0"
+  .github/pull_request_template.md:
+    kind: file
+    sha256: "15bfe58ba1b98df508138dd26d140a5c3a5d3b5ec0ef7c160ad3ac619356d470"
+    framework_version: "0.1.0"
+  .github/workflows/agentive-lint.yml:
+    kind: file
+    sha256: "9836167219b47e5a9e67579b069b704e519f3819fab2fd94b9a19de17657e527"
+    framework_version: "0.1.0"
+  .github/workflows/agentive-review.yml:
+    kind: file
+    sha256: "5e5319163db79af6caa03c5ad2672c73676845520ff6d0e450feea4826cb374f"
+    framework_version: "0.1.0"
+  .github/workflows/reviewer-eval.yml:
+    kind: file
+    sha256: "3e616908a6839969745b544659d5df991d5b4108cefb8e76679b13d8d3478dd8"
+    framework_version: "0.1.0"
+  .gitignore#state:
+    kind: region
+    sha256: b34966de2a997c6c42c3199ca7d44708fd76f99df35fcb9f8730e8d426bf2237
+    framework_version: "0.1.0"
+  AGENTS.md#context:
+    kind: region
+    sha256: "263133a4446ce4f5f7778621f1cd7b1292bbafd038b5ca3ade589310e609257f"
+    framework_version: "0.1.0"
+  AGENTS.md#path-rules:
+    kind: region
+    sha256: a24b744060900a280a4d5838b51136d7e6884573dca1f35302a4c51c947f6097
+    framework_version: "0.1.0"
+  CLAUDE.md#imports:
+    kind: region
+    sha256: "172dc053c9cdabf864c73f9a06dc9ecbaf59a42e55402835e4aae0ec4237958f"
+    framework_version: "0.1.0"
+  code_review.md#rules:
+    kind: region
+    sha256: fdab570d493b8e3820635a5e6e6a309db8ef1c062b3f48a5fe2f392c7dc61ca4
+    framework_version: "0.1.0"
+  docs/adr/0000-template.md:
+    kind: file
+    sha256: "80efca1641210266345a2ead46c0be2cc083ef581c893c2d9fb3c8b526c80358"
+    framework_version: "0.1.0"
+  evals/reviewer/README.md:
+    kind: file
+    sha256: "34df3ad764ef03714d4248a9453b47b81d70c34efb03014732b97ef513d547f6"
+    framework_version: "0.1.0"
+janitor:
+  kinds: []

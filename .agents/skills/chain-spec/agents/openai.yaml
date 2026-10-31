@@ -1,0 +1,7 @@
+# agentive-unit: rl.skill.chain-spec
+# design: spec.plugin.invocation.repo_skills, spec.repo_layer.files[f-chain-skills]
+interface:
+  display_name: "chain-spec"
+  short_description: "Write docs/plans/<slug>/spec.md after the intent PR is merged, then open the spec PR"
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,15 @@
+# agentive-unit: rl.rubric
+# design: spec.repo_layer.files[f-rubric], spec.review_pipeline.stages[RV7b].rubric, contracts[rubric], decisions.accepted[DEFAULTS] (the preset name in this file is the only record of the rubric choice, U6)
+# Generated preset (whole file). RV7b scores tier 1 PRs from deterministic inputs; RV8 sends a score above human_if_score_gt to a human.
+# Do not edit: put changes in .agents/custom/.agents/rubric.yaml (extends: "agentive:rubric@2"; items merged by id; enabled: false switches one off).
+# To stay on the previous preset, write extends: "agentive:rubric@1" there (alone or with changes): it is merged onto that preset.
+preset: "agentive:rubric@2"
+scoring: binary
+human_if_score_gt: 28
+shared_globs: ["**/shared/**", "**/common/**"]
+items:
+  - {id: spread, hit: ">=2 production modules or a shared path among production files (tests and docs excluded)", input: production_modules_or_shared_path, weight: 24}
+  - {id: size, hit: ">500 changed lines (tests counted; lock, generated and vendor files excluded)", input: changed_lines, weight: 30}
+  - {id: incident_history, hit: "revert or hotfix on touched files within 90 days", input: incident_history_90d, weight: 30}
+  - {id: change_type, hit: "dependency", input: change_class, weight: 14}
+  - {id: recent_churn, hit: ">=5 changes landed on the base branch within 90 days on a changed production file (first-parent history: a merged PR, a squash commit or a direct commit counts 1)", input: production_churn_90d, weight: 14}

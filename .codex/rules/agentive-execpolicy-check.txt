@@ -1,0 +1,62 @@
+# agentive-unit: rl.codex.rules-check
+# design: spec.repo_layer.files[f-codex-rules] (a `codex execpolicy check` fixture is generated with it)
+# One line per rendered prefix_rule: <expected decision> TAB <guard rule id> TAB <argv>. Check each with
+#   codex execpolicy check --rules .codex/rules/agentive.rules <argv...>
+# and compare the decision (experimental; UV-31).
+forbidden	publish	npm unpublish
+forbidden	publish	gem push
+forbidden	publish	gem yank
+forbidden	publish	dotnet nuget push
+forbidden	publish	dotnet nuget delete
+forbidden	publish	twine upload
+forbidden	publish	mvn deploy
+forbidden	publish	mvn release:perform
+forbidden	publish	./mvnw deploy
+forbidden	publish	./mvnw release:perform
+forbidden	publish	gh release create
+forbidden	publish	gh release edit
+forbidden	publish	gh release upload
+forbidden	publish	gh release delete
+forbidden	publish	gh release delete-asset
+forbidden	publish	docker push
+forbidden	publish	docker image push
+forbidden	publish	docker compose push
+forbidden	publish	podman push
+forbidden	infra-destroy	terraform destroy
+forbidden	infra-destroy	terraform apply -destroy
+forbidden	infra-destroy	pulumi destroy
+forbidden	infra-destroy	cdk destroy
+forbidden	infra-destroy	terragrunt destroy
+forbidden	infra-destroy	kubectl delete ns
+forbidden	infra-destroy	kubectl delete namespace
+forbidden	infra-destroy	kubectl delete pvc
+forbidden	infra-destroy	kubectl delete pv
+forbidden	infra-destroy	dropdb
+forbidden	infra-change	terraform apply
+forbidden	infra-change	pulumi up
+forbidden	infra-change	cdk deploy
+forbidden	infra-change	terragrunt apply
+forbidden	infra-change	kubectl apply
+forbidden	infra-change	kubectl delete
+forbidden	infra-change	kubectl create
+forbidden	infra-change	kubectl replace
+forbidden	infra-change	kubectl patch
+forbidden	infra-change	kubectl scale
+forbidden	infra-change	kubectl rollout restart
+forbidden	infra-change	helm install
+forbidden	infra-change	helm upgrade
+forbidden	infra-change	helm uninstall
+forbidden	infra-change	helm rollback
+forbidden	gh-pr-merge	gh pr merge
+prompt	reset-hard	git reset --hard
+prompt	reset-hard	git checkout -- .
+prompt	reset-hard	git restore .
+prompt	reset-hard	git stash drop
+prompt	reset-hard	git stash clear
+prompt	push-delete	git push --delete
+prompt	push-delete	git push -d
+prompt	push-delete	git push --mirror
+prompt	push-delete	git push --prune
+prompt	branch-delete	git branch -D
+prompt	branch-delete	git branch --delete --force
+prompt	branch-delete	git branch -d -f

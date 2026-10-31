@@ -1,0 +1,7 @@
+# agentive-unit: rl.skill.chain-intent
+# design: spec.plugin.invocation.repo_skills, spec.repo_layer.files[f-chain-skills]
+interface:
+  display_name: "chain-intent"
+  short_description: "Interview the human and write docs/plans/<slug>/intent.md, then open the intent PR"
+policy:
+  allow_implicit_invocation: true

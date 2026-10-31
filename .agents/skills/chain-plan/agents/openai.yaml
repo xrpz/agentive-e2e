@@ -1,0 +1,7 @@
+# agentive-unit: rl.skill.chain-plan
+# design: spec.plugin.invocation.repo_skills, spec.repo_layer.files[f-chain-skills]
+interface:
+  display_name: "chain-plan"
+  short_description: "Plan in /plan mode with the human, commit plan.md first on feature/<slug>, implement slice by slice"
+policy:
+  allow_implicit_invocation: true
