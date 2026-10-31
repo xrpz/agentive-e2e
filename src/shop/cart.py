@@ -6,3 +6,8 @@ def total(prices: list[float], discount: float = 0.0) -> float:
     if not 0.0 <= discount <= 1.0:
         raise ValueError("discount must be between 0 and 1")
     return round(sum(prices) * (1.0 - discount), 2)
+
+
+def item_count(prices: list[float]) -> int:
+    """Return how many items the cart holds."""
+    return len(prices)

@@ -1,7 +1,7 @@
 import pytest
 
 from shop.auth import check_password
-from shop.cart import total
+from shop.cart import item_count, total
 
 
 def test_total_no_discount():
@@ -20,3 +20,8 @@ def test_bad_discount():
 def test_check_password():
     assert check_password("a", "a")
     assert not check_password("a", "b")
+
+
+def test_item_count():
+    assert item_count([]) == 0
+    assert item_count([1.0, 2.5, 2.5]) == 3
