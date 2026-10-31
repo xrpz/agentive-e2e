@@ -1,3 +1,7 @@
 review:
   managed_code_review_copy: false
   auto_merge: low_and_medium_risk
+  pipeline:
+    stages:
+      RV1:
+        require_checks: [lint, test]
