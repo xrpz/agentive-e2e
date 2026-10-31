@@ -1,0 +1,329 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.agents/hooks/session-start-notice.py"
+            ],
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.agents/hooks/pre-tool-use-guard.py"
+            ],
+            "timeout": 30,
+            "onFailure": "block"
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.agents/hooks/pre-tool-use-context-gate.py"
+            ],
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.agents/hooks/pre-tool-use-test-rewrite.py"
+            ],
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.agents/hooks/post-tool-use-lint.py"
+            ],
+            "timeout": 300
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.agents/hooks/stop-verify.py"
+            ],
+            "timeout": 1800
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.agents/hooks/subagent-observe.py"
+            ],
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.agents/hooks/subagent-observe.py"
+            ],
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "FileChanged": [
+      {
+        "matcher": "Cargo.lock|Cargo.toml|Gemfile|Gemfile.lock|Makefile|Pipfile|Pipfile.lock|build.gradle|build.gradle.kts|bun.lock|bun.lockb|composer.json|composer.lock|go.mod|go.sum|package-lock.json|package.json|pnpm-lock.yaml|poetry.lock|pom.xml|pyproject.toml|requirements-dev.txt|requirements.txt|settings.gradle|settings.gradle.kts|setup.cfg|setup.py|tsconfig.json|uv.lock|yarn.lock",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.agents/hooks/file-changed-dirty.py"
+            ],
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.agents/hooks/session-end-harvest.py"
+            ],
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(./secrets/**)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.gnupg/**)",
+      "Read(~/.netrc)",
+      "Read(~/.config/gh/**)",
+      "Read(~/.kube/**)",
+      "Edit(~/.ssh/**)",
+      "Bash(npm unpublish)",
+      "Bash(npm unpublish *)",
+      "Bash(gem push)",
+      "Bash(gem push *)",
+      "Bash(gem yank)",
+      "Bash(gem yank *)",
+      "Bash(dotnet nuget push)",
+      "Bash(dotnet nuget push *)",
+      "Bash(dotnet nuget delete)",
+      "Bash(dotnet nuget delete *)",
+      "Bash(twine upload)",
+      "Bash(twine upload *)",
+      "Bash(mvn deploy)",
+      "Bash(mvn deploy *)",
+      "Bash(mvn release:perform)",
+      "Bash(mvn release:perform *)",
+      "Bash(./mvnw deploy)",
+      "Bash(./mvnw deploy *)",
+      "Bash(./mvnw release:perform)",
+      "Bash(./mvnw release:perform *)",
+      "Bash(gh release create)",
+      "Bash(gh release create *)",
+      "Bash(gh release edit)",
+      "Bash(gh release edit *)",
+      "Bash(gh release upload)",
+      "Bash(gh release upload *)",
+      "Bash(gh release delete)",
+      "Bash(gh release delete *)",
+      "Bash(gh release delete-asset)",
+      "Bash(gh release delete-asset *)",
+      "Bash(docker push)",
+      "Bash(docker push *)",
+      "Bash(docker image push)",
+      "Bash(docker image push *)",
+      "Bash(docker buildx * --push*)",
+      "Bash(docker compose push)",
+      "Bash(docker compose push *)",
+      "Bash(podman push)",
+      "Bash(podman push *)",
+      "Bash(terraform destroy)",
+      "Bash(terraform destroy *)",
+      "Bash(terraform apply -destroy)",
+      "Bash(terraform apply -destroy *)",
+      "Bash(terraform apply * -destroy*)",
+      "Bash(pulumi destroy)",
+      "Bash(pulumi destroy *)",
+      "Bash(cdk destroy)",
+      "Bash(cdk destroy *)",
+      "Bash(terragrunt destroy)",
+      "Bash(terragrunt destroy *)",
+      "Bash(kubectl delete ns)",
+      "Bash(kubectl delete ns *)",
+      "Bash(kubectl delete namespace)",
+      "Bash(kubectl delete namespace *)",
+      "Bash(kubectl delete * --all*)",
+      "Bash(kubectl delete * -A*)",
+      "Bash(kubectl delete pvc)",
+      "Bash(kubectl delete pvc *)",
+      "Bash(kubectl delete pv)",
+      "Bash(kubectl delete pv *)",
+      "Bash(dropdb)",
+      "Bash(dropdb *)",
+      "Bash(terraform apply)",
+      "Bash(terraform apply *)",
+      "Bash(pulumi up)",
+      "Bash(pulumi up *)",
+      "Bash(cdk deploy)",
+      "Bash(cdk deploy *)",
+      "Bash(terragrunt apply)",
+      "Bash(terragrunt apply *)",
+      "Bash(kubectl apply)",
+      "Bash(kubectl apply *)",
+      "Bash(kubectl delete)",
+      "Bash(kubectl delete *)",
+      "Bash(kubectl create)",
+      "Bash(kubectl create *)",
+      "Bash(kubectl replace)",
+      "Bash(kubectl replace *)",
+      "Bash(kubectl patch)",
+      "Bash(kubectl patch *)",
+      "Bash(kubectl scale)",
+      "Bash(kubectl scale *)",
+      "Bash(kubectl rollout restart)",
+      "Bash(kubectl rollout restart *)",
+      "Bash(helm install)",
+      "Bash(helm install *)",
+      "Bash(helm upgrade)",
+      "Bash(helm upgrade *)",
+      "Bash(helm uninstall)",
+      "Bash(helm uninstall *)",
+      "Bash(helm rollback)",
+      "Bash(helm rollback *)",
+      "Bash(gh pr merge)",
+      "Bash(gh pr merge *)",
+      "Bash(sh .agents/skills/*../*)",
+      "Bash(bash .agents/skills/*../*)",
+      "Bash(python3 .agents/skills/*../*)",
+      "Bash(.agents/bin/*../*)"
+    ],
+    "ask": [
+      "Bash(git reset --hard)",
+      "Bash(git reset --hard *)",
+      "Bash(git clean -f*)",
+      "Bash(git clean -d*)",
+      "Bash(git clean -x*)",
+      "Bash(git checkout -- .)",
+      "Bash(git checkout -- . *)",
+      "Bash(git restore .)",
+      "Bash(git restore . *)",
+      "Bash(git stash drop)",
+      "Bash(git stash drop *)",
+      "Bash(git stash clear)",
+      "Bash(git stash clear *)",
+      "Bash(*DROP TABLE*)",
+      "Bash(*drop table*)",
+      "Bash(*TRUNCATE *)",
+      "Bash(*truncate *)",
+      "Bash(git push --delete)",
+      "Bash(git push --delete *)",
+      "Bash(git push * --delete*)",
+      "Bash(git push -d)",
+      "Bash(git push -d *)",
+      "Bash(git push * -d *)",
+      "Bash(git push --mirror)",
+      "Bash(git push --mirror *)",
+      "Bash(git push * --mirror*)",
+      "Bash(git push --prune)",
+      "Bash(git push --prune *)",
+      "Bash(git push * --prune*)",
+      "Bash(git branch -D)",
+      "Bash(git branch -D *)",
+      "Bash(git branch * -D*)",
+      "Bash(git branch --delete --force)",
+      "Bash(git branch --delete --force *)",
+      "Bash(git branch -d -f)",
+      "Bash(git branch -d -f *)"
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "credentials": {
+      "files": [
+        {
+          "path": "~/.ssh",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.aws",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.gnupg",
+          "mode": "deny"
+        }
+      ],
+      "envVars": [
+        {
+          "name": "GITHUB_TOKEN",
+          "mode": "deny"
+        },
+        {
+          "name": "NPM_TOKEN",
+          "mode": "deny"
+        }
+      ]
+    }
+  },
+  "plansDirectory": "docs/plans",
+  "env": {}
+}

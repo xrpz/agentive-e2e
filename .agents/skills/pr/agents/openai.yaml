@@ -1,0 +1,7 @@
+# agentive-unit: rl.skill.pr
+# design: spec.plugin.invocation.pr, spec.repo_layer.files[f-pr]
+interface:
+  display_name: "pr"
+  short_description: "Push the work branch and open or refresh its PR with the agentive body; --explain rewrites only ## Explainer"
+policy:
+  allow_implicit_invocation: true

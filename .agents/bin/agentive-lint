@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+# agentive-unit: rl.bin.agentive-lint
+# design: spec.repo_checks.agentive_lint, spec.repo_layer.files[f-lint], spec.review_pipeline.stages[RV7b].customization.print
+"""agentive-lint: every agentive repo check in one script (CI job agentive-lint).
+
+  agentive-lint ci                      size, provenance, check-tags, persist, skills, lock, rules (+ links when enabled)
+  agentive-lint <sub> [<sub> ...]       size | provenance | check-tags | persist | skills | lock | rules | links
+  agentive-lint rules --write           render AGENTS.md#path-rules and the pointer-mode .claude/rules copies from
+                                        .agents/rules/*.md in the working tree (RULESNEUTRAL; /distill runs it before
+                                        committing a rule); `rules` alone (and `ci`) only checks
+  agentive-lint rubric --effective      print the effective rubric (.agents/rubric.yaml + .agents/custom/.agents/rubric.yaml)
+                                        and its sha256 (not a CI check)
+  agentive-lint settings --effective    print the effective settings (framework defaults overridden by .agents/framework.yaml:
+                                        review.auto_merge, require_checks, ci_tool, ...), their source and, for auto-merge, why
+                                        it is unavailable (not a CI check)
+One `LINT <sub> <path>[:<line>]: <what>. NEXT: <fix>` line per problem (a `LINTWARN` line informs and does not fail the run), then `AGENTIVE_LINT=ok|fail:<subs>; NEXT=...`.
+Exit 0 ok, 1 problems, 2 usage or environment error.
+"""
+import os
+import sys
+
+sys.dont_write_bytecode = True  # no __pycache__ in the user's repo (V1-08)
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, "..", "lib"))
+try:
+    from agentive import ayaml, common, rulesync         # noqa: E402
+    from agentive.lint import checks                     # noqa: E402
+    from agentive.review import config as cfgmod, settings as settingsmod   # noqa: E402
+except ImportError as e:                                   # pragma: no cover
+    print(f"AGENTIVE_FAIL verb=lint exit=2 log=-; NEXT=install python3 >= 3.9 and keep .agents/lib/agentive ({e})")
+    sys.exit(2)
+
+SUBS = ["size", "provenance", "check-tags", "persist", "skills", "lock", "rules", "links"]
+
+
+def main(argv):
+    repo = common.repo_root(os.getcwd())
+    if not repo:
+        print("AGENTIVE_LINT=error not a git work tree; NEXT=cd into the repository")
+        return 2
+    if argv[:1] == ["rubric"]:
+        if "--effective" not in argv:
+            print("AGENTIVE_LINT=error usage; NEXT=agentive-lint rubric --effective")
+            return 2
+        eff = cfgmod.effective_rubric(lambda p: checks.read(repo, p))
+        if not eff.valid:
+            for p in eff.problems:
+                print(f"LINT rubric {p}. NEXT: fix the override against the rubric schema")
+            print("AGENTIVE_LINT=fail:rubric; NEXT=fix .agents/custom/.agents/rubric.yaml (tier 1 goes to a human until it validates)")
+            return 1
+        sys.stdout.write(ayaml.dumps(eff.value))
+        print(f"sha256: {cfgmod.rubric_sha256(eff.value)}")
+        return 0
+    if argv[:1] == ["settings"]:
+        if "--effective" not in argv:
+            print("AGENTIVE_LINT=error usage; NEXT=agentive-lint settings --effective")
+            return 2
+        print("\n".join(settingsmod.effective(lambda p: checks.read(repo, p))))
+        return 0
+    if argv[:1] == ["rules"] and "--write" in argv:
+        probs, changed = rulesync.sync(repo, write=True)
+        for c in changed:
+            print(f"AGENTIVE_RULES wrote {c}")
+        left, _ = rulesync.sync(repo, write=False)
+        for path, what, fix in left:
+            print(f"LINT rules {path}: {what}. NEXT: {fix}")
+        if left:
+            print("AGENTIVE_LINT=fail:rules; NEXT=fix the LINT lines above, then rerun .agents/bin/agentive-lint rules --write")
+            return 1
+        nxt = f"git add {' '.join(changed)} and commit them with the rule" if changed else "none"
+        print(f"AGENTIVE_LINT=ok (rules --write, {len(changed)} changed); NEXT={nxt}")
+        return 0
+    subs = argv or ["ci"]
+    if subs == ["ci"]:
+        subs = SUBS[:-1] + (["links"] if checks.links_enabled(repo) else [])
+    bad = [s for s in subs if s not in SUBS]
+    if bad:
+        print(f"AGENTIVE_LINT=error unknown subcommand {bad}; NEXT=use one of {SUBS}, ci, rubric --effective or settings --effective")
+        return 2
+    files = checks.tracked(repo)
+    probs = []
+    for s in subs:
+        if s == "check-tags":
+            probs += checks.check_tags(repo, files, checks.generated_paths(repo))
+        else:
+            probs += getattr(checks, s.replace("-", "_"))(repo, files)
+    for p in probs:
+        print(p)
+    probs = [p for p in probs if not p.warn]    # LINTWARN lines inform and never fail the run
+    if probs:
+        failed = sorted({p.sub for p in probs})
+        print(f"AGENTIVE_LINT=fail:{','.join(failed)}; NEXT=fix the LINT lines above, then rerun .agents/bin/agentive-lint {' '.join(argv) or 'ci'}")
+        return 1
+    print(f"AGENTIVE_LINT=ok ({','.join(subs)}); NEXT=none")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

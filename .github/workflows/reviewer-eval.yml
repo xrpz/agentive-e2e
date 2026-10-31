@@ -1,0 +1,52 @@
+# agentive-unit: rl.ci.reviewer-eval
+# design: spec.review_pipeline.reviewer_eval.ci, spec.work_loop.ci_ai_review_floor.tool, decisions.accepted[CITOOL], decisions.accepted[CIAUTH], spec.review_pipeline.reviewer_eval.reviewer_paths, spec.repo_layer.files[f-ci], spec.outer_loop.triggers
+# Not a required check and never blocks. Runs its comparison only on a PR that changes the reviewer (prompt, model,
+# tool or review rule): N = 3 runs with the base branch's reviewer config (before) and 3 with the PR's (after), then one
+# PR comment marked <!-- agentive-reviewer-eval --> updated in place. No schedule (decision G2, RVEVAL).
+# Fork PRs of public repos get no secrets: the comment says 'not run'.
+# The CLI install and the secret name are rendered at init and update for the effective CI tool (decisions.accepted[CITOOL]:
+# review.pipeline.ci_tool, else the tool that ran init); the runner agentive-reviewer-eval maps AGENTIVE_CI_API_KEY to the
+# variable its tool reads (claude: ANTHROPIC_API_KEY, codex: CODEX_API_KEY) and, on claude, AGENTIVE_CI_OAUTH_TOKEN (secret
+# CLAUDE_CODE_OAUTH_TOKEN, a subscription token from `claude setup-token`) to CLAUDE_CODE_OAUTH_TOKEN, for the single run only.
+# Which Claude secrets are passed follows review.pipeline.ci_auth (decisions.accepted[CIAUTH], default both); with both the
+# OAuth token goes first: AGENTIVE_CI_API_KEY is empty while CLAUDE_CODE_OAUTH_TOKEN is set (E2E-12).
+name: reviewer-eval
+"on":
+  pull_request:
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  reviewer-eval:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 180
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' || secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: detect
+        run: .agents/bin/agentive-reviewer-eval detect --base "$BASE_SHA" --head "$HEAD_SHA"
+      - name: install Claude Code
+        if: steps.detect.outputs.changed == 'true' && env.HAS_KEY == 'true'
+        run: npm install -g @anthropic-ai/claude-code
+      - name: before and after runs (headless standard command, never --bare)
+        if: steps.detect.outputs.changed == 'true' && env.HAS_KEY == 'true'
+        env:
+          AGENTIVE_CI_API_KEY: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN == '' && secrets.ANTHROPIC_API_KEY || '' }}
+          AGENTIVE_CI_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          .agents/bin/agentive-reviewer-eval run --side baseline --config-ref "$BASE_SHA" --n 3 --out "$RUNNER_TEMP/eval"
+          .agents/bin/agentive-reviewer-eval run --side candidate --config-ref "$HEAD_SHA" --n 3 --out "$RUNNER_TEMP/eval"
+      - name: score and comment
+        if: steps.detect.outputs.changed == 'true'
+        run: |
+          if [ "$HAS_KEY" = "true" ]; then nr=""; else nr="--not-run"; fi
+          .agents/bin/agentive-reviewer-eval score --out "$RUNNER_TEMP/eval" --baseline-ref "$BASE_SHA" --candidate-ref "$HEAD_SHA" --n 3 $nr
+          .agents/bin/agentive-reviewer-eval comment "${{ github.event.pull_request.number }}" --file "$RUNNER_TEMP/eval/comment.md"

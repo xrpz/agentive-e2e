@@ -1,0 +1,13 @@
+#!/bin/sh
+# agentive-unit: rl.bin.verb
+# design: spec.verb_wrapper, spec.repo_layer.files[f-verb]
+# The one wrapper every verb runs through: .agents/bin/verb <setup|build|lint|typecheck|test|verify|run> [-- args]
+# Logic lives in .agents/lib/agentive/verb.py (python3 >= 3.9 stdlib); this file only finds the repo and python3.
+set -eu
+root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "AGENTIVE_FAIL verb=${1:-none} exit=127 log=none; NEXT=install python3 >= 3.9"
+  exit 127
+fi
+cd "$root"
+PYTHONPATH="$root/.agents/lib${PYTHONPATH:+:$PYTHONPATH}" exec python3 -B -c 'import sys; from agentive.verb import main; sys.exit(main(sys.argv[1:]))' "$@"
