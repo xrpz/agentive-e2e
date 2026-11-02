@@ -1,0 +1,130 @@
+# agentive-unit: rl.guard
+# design: spec.guard, spec.repo_layer.files[f-guard], contracts[guard-rules], spec.stop_conditions.ESCALATE
+# Single source of the deny and ask command rules. /agentive:init and /agentive:update render from it:
+# .claude/settings.json permissions.deny/ask (argv_prefix rules without unless), the PreToolUse guard hook
+# (every rule), .codex/hooks.json (deny only) and .codex/rules/agentive.rules (experimental).
+# Change it only through .agents/custom/.agents/guard.yaml: add rules or turn ask into deny (spec.guard.repo_rules).
+# Value forms [design judgment]: argv_prefix = list of space-separated prefixes, `*` = any characters (Claude rule syntax);
+# rules with unless and regex/special rules are matched by the hook only. Ids with a suffix (-sql, -dry-run)
+# split one design id where one match kind cannot hold it.
+version: 1
+rules:
+  - id: push-default-branch
+    decision: deny
+    match: {kind: special, value: default_branch_push}
+    reason: "direct push to the default branch (read from origin/HEAD; a bare git push means the current branch)"
+    next: "push a work branch (git push -u origin HEAD:<work-branch>) and open a PR with /pr"
+  - id: push-force
+    decision: deny
+    match: {kind: regex, value: ['^git push\b.*\s(--force|-f)(\s|$)', '^git push\b.*\s\+[^\s:]+', '^git push\b.*\s-[a-zA-Z]*f[a-zA-Z]*(\s|$)']}
+    reason: "force push (--force, -f, +ref)"
+    next: "use git push --force-with-lease to your work branch, or ask a human"
+  - id: push-tag
+    decision: deny
+    match: {kind: special, value: tag_push}
+    reason: "tag push (git push <tag>, --tags, --follow-tags): releases are done by humans"
+    next: "leave tagging and releases to a human"
+  - id: publish
+    decision: deny
+    match:
+      kind: argv_prefix
+      value: ["npm unpublish", "gem push", "gem yank", "dotnet nuget push", "dotnet nuget delete", "twine upload",
+              "mvn deploy", "mvn release:perform", "./mvnw deploy", "./mvnw release:perform",
+              "gh release create", "gh release edit", "gh release upload", "gh release delete", "gh release delete-asset",
+              "docker push", "docker image push", "docker buildx * --push*", "docker compose push", "podman push"]
+    reason: "mutating publish or release command"
+    next: "a human publishes and releases; use the tool's dry-run form to check the package"
+  - id: publish-dry-run
+    decision: deny
+    match:
+      kind: argv_prefix
+      value: ["npm publish", "pnpm publish", "pnpm -r publish", "yarn publish", "yarn npm publish", "yarn workspace * npm publish",
+              "bun publish", "cargo publish", "cargo yank", "uv publish", "poetry publish",
+              "gradle publish*", "./gradlew publish*"]
+      unless: ["--dry-run", "-n", "re:publishToMavenLocal"]
+    reason: "publish command (only its dry-run form is allowed)"
+    next: "run it with --dry-run (cargo -n), or leave publishing to a human"
+  - id: infra-destroy
+    decision: deny
+    match:
+      kind: argv_prefix
+      value: ["terraform destroy", "terraform apply -destroy", "terraform apply * -destroy*", "pulumi destroy", "cdk destroy",
+              "terragrunt destroy", "kubectl delete ns", "kubectl delete namespace", "kubectl delete * --all*",
+              "kubectl delete * -A*", "kubectl delete pvc", "kubectl delete pv", "dropdb"]
+    reason: "destroys infrastructure or data"
+    next: "a human runs destructive infrastructure commands"
+  - id: infra-destroy-sql
+    decision: deny
+    match: {kind: special, value: sql_destructive}
+    reason: "DROP DATABASE or DROP SCHEMA through a SQL client"
+    next: "a human runs destructive database commands"
+  - id: infra-change
+    decision: deny
+    match:
+      kind: argv_prefix
+      value: ["terraform apply", "pulumi up", "cdk deploy", "terragrunt apply", "kubectl apply", "kubectl delete",
+              "kubectl create", "kubectl replace", "kubectl patch", "kubectl scale", "kubectl rollout restart",
+              "helm install", "helm upgrade", "helm uninstall", "helm rollback"]
+    reason: "infrastructure change (infra changes are the infra team's job)"
+    next: "write the change as code in a PR (terraform plan / kubectl diff / helm template are allowed)"
+  - id: rm-unresolvable
+    decision: deny
+    match: {kind: special, value: unresolvable_rm_var}
+    reason: "rm -r with a variable not assigned in the same command, or rm of the repo root"
+    next: "assign the variable in the same command or name the path literally"
+  - id: no-verify
+    decision: deny
+    match: {kind: special, value: no_verify}
+    reason: "git commit or push with --no-verify skips the repo checks"
+    next: "fix what the hook reports, then commit or push without --no-verify"
+  - id: gh-pr-merge
+    decision: deny
+    match: {kind: argv_prefix, value: ["gh pr merge"]}
+    reason: "agents do not merge PRs: tier 2 is merged by a human and tier 0/1 auto-merge is enabled only by the gate job"
+    next: "leave the merge to the human or the agentive-review-gate job"
+  # SKILLPATHS (2026-10-29): permission rules match command text only, so the allowlist entry Bash(sh .agents/skills/*)
+  # also matched `sh .agents/skills/../../x.sh` (measured with Claude Code 2.1.312). Codex prefix_rule cannot hold a
+  # `*` inside a token, so Codex gets this rule through its PreToolUse hook (.codex/hooks.json) only.
+  - id: agentive-path-traversal
+    decision: deny
+    match: {kind: argv_prefix, value: ["sh .agents/skills/*../*", "bash .agents/skills/*../*", "python3 .agents/skills/*../*", ".agents/bin/*../*"]}
+    reason: "a command under an agentive allowlist prefix (sh .agents/skills/, .agents/bin/) that leaves it through a `..` path segment"
+    next: "call the skill script or the .agents/bin command by its own path from the repository root, without .."
+  - id: reset-hard
+    decision: ask
+    match:
+      kind: argv_prefix
+      value: ["git reset --hard", "git clean -f*", "git clean -d*", "git clean -x*", "git checkout -- .", "git restore .",
+              "git stash drop", "git stash clear"]
+    reason: "discards uncommitted work"
+    next: "ask the human, or commit or stash the work first"
+  - id: sql-drop-table
+    decision: ask
+    match: {kind: argv_prefix, value: ["*DROP TABLE*", "*drop table*", "*TRUNCATE *", "*truncate *"]}
+    reason: "DROP TABLE or TRUNCATE deletes data"
+    next: "ask the human before deleting tables"
+  - id: push-delete
+    decision: ask
+    match: {kind: argv_prefix, value: ["git push --delete", "git push * --delete*", "git push -d", "git push * -d *", "git push --mirror", "git push * --mirror*", "git push --prune", "git push * --prune*"]}
+    reason: "deletes or rewrites remote refs"
+    next: "ask the human before deleting remote branches"
+  # design judgment (V1-09): the design's `git push <remote> :ref` form of push-delete. A permission rule cannot express it
+  # (a trailing `:*` is the legacy prefix syntax, code.claude.com/docs/en/permissions), so it is a hook-only rule and,
+  # as guard.decisions.not_expressible says, deny with an init warning; `git push <remote> --delete <ref>` still asks.
+  - id: push-delete-refspec
+    decision: deny
+    expressible: false
+    match: {kind: special, value: push_delete_refspec}
+    reason: "deletes a remote ref through an empty-source refspec (:<ref>); no permission rule can express it, so it is denied"
+    next: "use git push <remote> --delete <ref>, which asks the human"
+  - id: branch-delete
+    decision: ask
+    match: {kind: argv_prefix, value: ["git branch -D", "git branch * -D*", "git branch --delete --force", "git branch -d -f"]}
+    reason: "force-deletes a local branch"
+    next: "ask the human, or use git branch -d (merged branches only)"
+  - id: sql-delete-no-where
+    decision: deny
+    expressible: false
+    match: {kind: special, value: sql_without_where}
+    reason: "DELETE without WHERE through a SQL client (no permission rule can express it, so it is denied)"
+    next: "add a WHERE clause, or ask the human to run it"

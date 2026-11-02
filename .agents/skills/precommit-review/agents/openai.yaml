@@ -1,0 +1,7 @@
+# agentive-unit: rl.skill.precommit-review
+# design: spec.plugin.invocation.repo_skills, spec.repo_layer.files[f-precommit], spec.work_loop.precommit_review.codex
+interface:
+  display_name: "precommit-review"
+  short_description: "Fresh-context review of the staged change before an agent commit; reports blocking findings and U2 confirmation"
+policy:
+  allow_implicit_invocation: true

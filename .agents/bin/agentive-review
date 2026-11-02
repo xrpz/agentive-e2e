@@ -1,0 +1,864 @@
+#!/usr/bin/env python3
+# agentive-unit: rl.bin.agentive-review
+# design: spec.repo_layer.files[f-reviewers].scripts, spec.review_pipeline.profiles, spec.work_loop.ci_ai_review_floor, spec.work_loop.ci_independence_check, spec.review_pipeline.stages[RV8], decisions.accepted[DEPHUMAN]
+"""agentive review pipeline CLI (python3 >= 3.13 stdlib; library .agents/lib/agentive/review/).
+
+  agentive-review precommit [--run interactive|non_interactive] [--human-confirmation obtained|not_obtained]
+                            [--tool claude|claude_code|codex|other]
+      profile precommit (RV1, RV2, RV5) on `git diff --cached`; writes .agents/state/precommit-review.json and
+      .agents/state/review-report.json. Called by the precommit-review skill (context: fork). The review record is
+      advisory and honest: tool (the real one), executed_by, attestation, context (isolated only when a SubagentStart or
+      SubagentStop hook saw the subagent), reviewed_ref (review/attest.py).
+  agentive-review ci <pr> [--checks F] [--outer-results F] [--fetch-prior] [--no-tasks] [--post] [--work D]
+      profile ci for the ai-review job: deterministic stages, then LLM tasks for the agent (see TASKS below). The job
+      never runs PR code: --outer-results is the artifact of the outer-verbs job (the verifier reads it).
+  agentive-review gate <pr> [--checks F] [--work D] [--apply] [--event E]
+      RV8 for the required check agentive-review-gate: recomputes every deterministic stage from the base commit,
+      reads the LLM outputs of the ai-review work directory (fail-safe when missing), decides, and with --apply
+      writes agentive-review.pipeline into the PR body, labels PRs that review.auto_merge did not merge but would have
+      (agentive:shadow-auto-merge), opens demotion issues, enables auto-merge.
+  agentive-review independence <pr> [--work D]      CI job agentive-independence (enforced in CI: a review of the ai-review job for
+      the PR head sha; bot PRs and human PRs without an agentive-review block are exempt and go to a human)
+  agentive-review outputs-hash --work D [--expect H]  sha256 of the LLM task outputs; --expect drops them on a mismatch
+  agentive-review llm-state --work D                 the step after the ai-review LLM step: records steps.llm.outcome and
+      steps.llm.outputs.conclusion (env AGENTIVE_LLM_OUTCOME, AGENTIVE_LLM_CONCLUSION) in D/llm-state.json and, when the step
+      failed, an allowlisted error code read from the execution file (AGENTIVE_LLM_EXECUTION_FILE) plus one ::error annotation
+      with a fixed sentence; never the error text (E2E-10b)
+  agentive-review outer-verbs [--out F]              CI job outer-verbs: runs the required verbs through .agents/bin/verb
+  agentive-review eval --base S --head S --work D    profile ci on a commit range with the working-tree policy
+      (reviewer eval runs; no GitHub access)
+  agentive-review rv2 --base S --head S [--rules-file F]
+      RV2 only, on a commit range with the working-tree policy (SECPATHS): prints one AGENTIVE_RV2_HIT line per trust boundary hit
+      (path, layer, glob, reason, source) and one AGENTIVE_RV2_SHADOW line per shadow rule hit. /distill uses it to prove that a
+      learned rule matches the diff it missed.
+  agentive-review checks --out F [--outer JSON] [--job name=result ...] [--must-run name ...]
+      CI helper: one check list from the outer-verbs results and job results (success|failure|skipped|cancelled);
+      a --must-run job that was skipped counts as failed (GitHub treats a skipped required check as success)
+  agentive-review merge-group --head-ref REF        the gate on merge_group: the queued PR's recorded gate decision
+      must be pass or human_required for its current head (outer-verbs runs on the merge group commit itself)
+
+TASKS: when an LLM stage has work the command prints `AGENTIVE_REVIEW_TASK id=.. agent=.. input=.. output=..` lines
+and a last line `AGENTIVE_REVIEW=tasks:<n> ... NEXT=...`, and exits 3. Run each task with the named subagent in a fresh
+context, write its JSON reply verbatim to the output path, and run the same command again.
+Exit codes: 0 done, 1 blocked (precommit blocking findings or gate block), 2 error, 3 tasks pending.
+GitHub is read and written with `gh api` (REST); `gh pr merge --auto` is the only gh pr call (gate --apply).
+"""
+import argparse
+import json
+import os
+import subprocess
+import sys
+
+sys.dont_write_bytecode = True                        # no __pycache__ inside .agents/lib of the user's repo (V1-08)
+if sys.version_info < (3, 13):      # E2E-46: the floor check, the same line as the engine (src/engine/apply.py)
+    print("AGENTIVE_ERROR python3 < 3.13; NEXT=install python3 >= 3.13")
+    sys.exit(2)
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, "..", "lib"))
+try:
+    from agentive import common, hookio, verb as verbmod   # noqa: E402
+    from agentive.review import (attest, config as cfgmod, evals, findings as fmod, github as gh, gitio, independence,  # noqa: E402
+                                 killswitch, llmstate, pipeline, post, pr_body, rv1 as rv1mod, rv2 as rv2mod, util)
+except ImportError as e:                               # pragma: no cover
+    print(f"AGENTIVE_FAIL verb=review exit=2 log=-; NEXT=install python3 >= 3.13 and keep .agents/lib/agentive ({e})")
+    sys.exit(2)
+
+STATE = os.path.join(".agents", "state")
+
+
+def die(msg, nxt, code=2):
+    print(f"AGENTIVE_REVIEW=error {msg}; NEXT={nxt}")
+    sys.exit(code)
+
+
+def repo_root():
+    r = common.repo_root(os.getcwd())
+    if not r:
+        die("not inside a git work tree", "cd into the repository and rerun")
+    return r
+
+
+def no_human():
+    """spec.no_human_run signals visible to a script: AGENTIVE_HEADLESS=1, CI or GITHUB_ACTIONS."""
+    return os.environ.get("AGENTIVE_HEADLESS") == "1" or bool(os.environ.get("CI")) or bool(os.environ.get("GITHUB_ACTIONS"))
+
+
+def ensure_commit(repo, sha):
+    if not gitio.ok(repo, "cat-file", "-e", sha + "^{commit}"):
+        subprocess.run(["git", "-C", repo, "fetch", "--no-tags", "--quiet", "origin", sha], capture_output=True)
+    if not gitio.ok(repo, "cat-file", "-e", sha + "^{commit}"):
+        die(f"commit {sha} is not in this clone", "checkout with fetch-depth: 0 (actions/checkout) or git fetch origin " + sha)
+
+
+def read_checks(path, source="ci"):
+    if not path:
+        return []
+    data = common.read_json(path, [])
+    out = []
+    for c in data if isinstance(data, list) else []:
+        if isinstance(c, dict) and c.get("name") and c.get("status") in ("pass", "fail", "skipped"):
+            out.append({"name": str(c["name"]), "status": c["status"], "source": source})
+    return out
+
+
+def write_report(repo, work, report):
+    rep = pipeline.strip_private(report)
+    common.write_json(os.path.join(work, "review-report.json"), rep)
+    common.write_json(os.path.join(repo, STATE, "review-report.json"), rep)
+    return rep
+
+
+def print_pending(p):
+    for ln in p.lines:
+        print(ln)
+    sys.exit(3)
+
+
+# ---------------------------------------------------------------- precommit
+def cmd_precommit(a):
+    repo = repo_root()
+    base = gitio.git(repo, "rev-parse", "--verify", "-q", "HEAD", check=False).strip() or pipeline.EMPTY_TREE
+    tree = gitio.git(repo, "write-tree").strip()
+    work = a.work or os.path.join(repo, STATE, "review", f"precommit-{tree[:12]}")
+    checks = []
+    vj = common.read_json(os.path.join(repo, STATE, "verify.json"))
+    fresh = verify_fresh(repo, vj, tree)
+    if fresh:
+        for name, v in (vj.get("verbs") or {}).items():
+            checks.append({"name": name, "status": "pass" if v.get("ok") else "fail", "source": "verify.json"})
+        for name in vj.get("pending") or []:
+            checks.append({"name": name, "status": "skipped", "source": "verify.json"})
+    run = a.run or ("non_interactive" if no_human() else "interactive")
+    hc = a.human_confirmation
+    if hc == "obtained" and run != "interactive":
+        die("human confirmation cannot be obtained in a run with no human present", "open a PR instead (/pr); tier 2 is forced")
+    policy = (lambda p: gitio.show(repo, base, p)) if base != pipeline.EMPTY_TREE else (lambda p: _read(repo, p))
+    ctx = pipeline.Ctx(repo, "precommit", base, None, work, policy=policy, checks=checks,
+                       u2_local={"run": run, "human_confirmation": hc}, rerun_cmd=_rerun(a, "precommit"),
+                       tool=attest.detect_tool(a.tool), reviewed_ref=tree)
+    try:
+        report, extras = pipeline.run(ctx)
+    except pipeline.Pending as p:
+        print_pending(p)
+    rep = write_report(repo, work, report)
+    rec = pipeline.precommit_record(rep, extras, tree)
+    common.write_json(os.path.join(repo, STATE, "precommit-review.json"), rec)
+    rv = rec.get("reviewer") or {}
+    if rv.get("executed_by") == "self":      # E2E-17 (PRECOMMITINLINE): say it, do not stop; CI is the independent check (INDEPCI)
+        print(f"NOTE independence=self reason={rv.get('self_reason') or 'unstated'}: no reviewer subagent ran this review; "
+              "the CI review (agentive-independence) is the independent check; this record says self")
+    u2 = rec["u2"]
+    if rec["blocking"]:
+        print(f"AGENTIVE_PRECOMMIT=blocked blocking={len(rec['blocking'])} file={STATE}/precommit-review.json; "
+              f"NEXT=fix every blocking finding (nits need no action), rerun verify, then rerun this command")
+        return 1
+    if not rec["checks_ok"]:
+        why = "stale" if isinstance(vj, dict) and not fresh else ("missing" if not isinstance(vj, dict) else "red")
+        work = hookio.content_tree(repo) if why == "stale" else None
+        if work and work != tree:      # part of the change is not staged: verify exactly what is committed (VERIFYTREE)
+            nxt = ("the work tree holds changes that are not staged (unstaged edits or untracked files), so verify must run on the staged "
+                   "content only: run .agents/bin/verb verify --staged (sets them aside, verifies the staged tree, restores them), "
+                   "or stage them too and run .agents/bin/verb verify; then rerun")
+        else:
+            nxt = ("run the verify skill (.agents/bin/verb verify) on the tree you commit, so .agents/state/verify.json matches it "
+                   "and is green, then rerun")
+        print(f"AGENTIVE_PRECOMMIT=blocked checks=not_ok verify={why} file={STATE}/precommit-review.json; NEXT={nxt}")
+        return 1
+    if u2["action"] == "pr_only_tier2":
+        nxt = ("ask the human to confirm the change to " + ", ".join(sorted({h['category'] for h in rec['confirm_scope_hits']}))
+               + " (U2), then rerun with --human-confirmation obtained" + no_human_path(repo)) if run == "interactive" else \
+            "do not commit to the default branch and do not merge: commit on a work branch only to open a PR (/pr); tier 2 is forced"
+        print(f"AGENTIVE_PRECOMMIT=confirm u2={u2['run']}/{u2['human_confirmation']} file={STATE}/precommit-review.json; NEXT={nxt}")
+        return 0
+    note = ""
+    if not any(c["status"] == "pass" for c in checks):      # every verb pending: the greenfield state, never a failure (UV-26)
+        note = (" verification=pending (no verb has a command yet: pending (no evidence)); the commit is not verified, say so; "
+                "scaffold the project, then run /agentive:update (Codex: $agentive-update) so verify has commands;")
+    print(f"AGENTIVE_PRECOMMIT=commit nits={len(rec['nits'])} trust_boundary_hits={len(rec['trust_boundary_hits'])};{note} "
+          f"NEXT=commit (RV2 hits are handled at the PR by a human)")
+    return 0
+
+
+def no_human_path(repo):
+    """E2E-49, E2E-52: the confirm NEXT also names the way out when nobody can answer (a delegated agent, a run the tool does
+    not mark as headless): the same rule as AGENTS.md "Commit" (a work branch and a PR, tier 2, a human merges).
+    Default branch: do not commit to it, switch to a work branch first (E2E-49). Work branch: commit on this branch and open a PR
+    with /pr, which then gets the human tier (E2E-52). Detached HEAD: a commit there is unreachable once HEAD moves, so create a
+    work branch first, then the same [design judgment]. `--human-confirmation obtained` is not weakened."""
+    cur, default = hookio.current_branch(repo), hookio.default_branch(repo)
+    on_default = bool(cur) and cur in ({default} if default else {"main", "master"})
+    if on_default:
+        return ("; if no human is present to answer (a delegated agent, a scheduled run): do not commit to " + cur +
+                ", commit on a work branch (git switch -c <type>/<slug> --no-track origin/" + cur + ") and open a PR with /pr (tier 2, a human merges it)")
+    if not cur:
+        return ("; if no human is present to answer (a delegated agent, a scheduled run): HEAD is detached, so create a work branch first "
+                "(git switch -c <type>/<slug>), commit there and open a PR with /pr (tier 2, a human merges it)")
+    return ("; if no human is present to answer (a delegated agent, a scheduled run): commit on this work branch (" + cur +
+            ") and open a PR with /pr (tier 2, a human merges it)")
+
+
+def verify_fresh(repo, vj, tree):
+    """True when .agents/state/verify.json describes exactly the tree being committed (V2-14 revised by VERIFYTREE,
+    E2E-08): its content_tree equals the index tree (`git write-tree`) and its verb commands are the ones the manifest
+    names now. Verify before or after `git add` both count when everything is staged; a commit of only part of the work
+    tree is fresh only after `.agents/bin/verb verify --staged`. An unborn HEAD works the same way (V2-03)."""
+    return verbmod.fresh_for(vj, tree, hookio.load_manifest(repo))
+
+
+def _read(repo, p):
+    try:
+        with open(os.path.join(repo, p), encoding="utf-8") as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def _rerun(a, sub):
+    parts = [".agents/bin/agentive-review", sub] + ([str(a.pr)] if getattr(a, "pr", None) else [])
+    if getattr(a, "checks", None):
+        parts += ["--checks", a.checks]
+    if getattr(a, "work", None):
+        parts += ["--work", a.work]
+    if getattr(a, "tool", None):
+        parts += ["--tool", a.tool]
+    if getattr(a, "outer_results", None):
+        parts += ["--outer-results", a.outer_results]
+    if sub == "eval":
+        parts += ["--base", a.base, "--head", a.head]
+    return " ".join(parts)
+
+
+# ---------------------------------------------------------------- CI context
+def ci_context(a, repo, allow_tasks):
+    slug = a.repo_slug or gh.slug_from_env(repo)
+    if a.pr_json:
+        pr = common.read_json(a.pr_json)
+    else:
+        if not slug:
+            die("no repository slug", "set GITHUB_REPOSITORY=owner/name or pass --repo-slug")
+        pr = gh.pr_context(slug, a.pr)
+    comments = common.read_json(a.comments_json, []) if a.comments_json else (gh.review_comments(slug, a.pr) if slug and not a.pr_json else [])
+    ensure_commit(repo, pr["base_sha"])
+    ensure_commit(repo, pr["head_sha"])
+    base = gitio.merge_base(repo, pr["base_sha"], pr["head_sha"]) or pr["base_sha"]
+    work = a.work or os.path.join(repo, STATE, "review", f"ci-{pr['head_sha'][:12]}")
+    if getattr(a, "fetch_prior", False) and slug and not os.path.isdir(os.path.join(work, "tasks")):
+        try:
+            gh.download_artifact(slug, f"agentive-review-{pr['head_sha']}", work)
+        except gh.GhError as e:
+            print(f"note: no earlier review artifact for this head ({e})")
+        if _label_event() == FULL_REVIEW_LABEL:
+            pipeline.reset_for_full_review(work)     # only in the planning step, which finds no tasks/ yet; the finishing step keeps them
+    checks = read_checks(a.checks)
+    prior = common.read_json(os.path.join(work, "review-report.json")) or {}
+    have = {c["name"] for c in checks}
+    for c in ((prior.get("rv1") or {}).get("checks") or []):
+        if c.get("name") not in have:
+            checks.append(c)
+    policy_rev = pr["base_sha"]
+    ctx = pipeline.Ctx(repo, "ci", base, pr["head_sha"], work, policy=lambda p: gitio.show(repo, policy_rev, p), pr=pr,
+                       comments=comments, checks=checks, allow_tasks=allow_tasks, trigger=_trigger(a),
+                       full_review="agentive:full-review" in (pr.get("labels") or []), rerun_cmd=_rerun(a, a.cmd),
+                       outer_results=read_outer_results(getattr(a, "outer_results", None)))
+    return ctx, slug, pr
+
+
+FULL_REVIEW_LABEL = "agentive:full-review"
+
+
+def _label_event():
+    """The label of a pull_request `labeled` event (env AGENTIVE_EVENT_LABEL), else None."""
+    return os.environ.get("AGENTIVE_EVENT_LABEL") if os.environ.get("AGENTIVE_EVENT_ACTION") == "labeled" else None
+
+
+def _trigger(a):
+    ev = getattr(a, "event", None) or os.environ.get("GITHUB_EVENT_NAME")
+    action = os.environ.get("AGENTIVE_EVENT_ACTION")
+    if ev == "pull_request":
+        if action == "labeled":                      # LABELTRIGGER: a label event is its own trigger, never a new review round
+            return "labeled"
+        return action if action in ("opened", "synchronize", "reopened", "edited") else "synchronize"
+    if ev in ("merge_group", "pull_request_review_comment"):
+        return ev
+    return None
+
+
+def body_pipeline(report, artifact_ref=None):
+    rv8 = report["rv8"]
+    pipe = {
+        "classification": {"classes": report["rv3"]["classes"], "method": report["rv3"]["method"]},
+        "tier": {"value": report["rv4"]["tier"], "reasons": report["rv4"]["reasons"],
+                 "trust_boundary_hits": util.uniq(h["path"] for h in report["rv2"]["hits"])},
+        "verified_findings": [{k: v for k, v in {"id": f["id"], "severity": f["severity"], "blocking": f["blocking"],
+                                                 "verdict": (f.get("verification") or {}).get("verdict", "inconclusive"),
+                                                 "file": f["file"], "line": f["line"], "summary": f["summary"],
+                                                 "reviewers": f["reviewers"], "trigger": f["trigger"]}.items()}
+                              for f in report.get("findings") or []],
+        "risk_score": {k: v for k, v in report["rv7b"].items() if k in ("score", "reason", "preset", "human_if_score_gt", "config_sha256")},
+        "gate": {"decision": rv8["decision"], "check": "agentive-review-gate", "auto_merge": rv8["auto_merge"],
+                 "demoted": bool(rv8.get("demoted")), "would_auto_merge": bool(rv8.get("would_auto_merge")), "head_sha": rv8["head_sha"]},
+    }
+    if artifact_ref:
+        pipe["gate"]["report_ref"] = artifact_ref
+    return pipe
+
+
+def read_outer_results(path):
+    """The outer-verbs artifact (written by PR code's job, so untrusted data): a short list of {name, status, log_tail}."""
+    if not path or not os.path.exists(path):
+        return None
+    data = common.read_json(path, [])
+    out = []
+    for c in data if isinstance(data, list) else []:
+        if isinstance(c, dict) and str(c.get("name", "")).isidentifier() and c.get("status") in ("pass", "fail", "skipped"):
+            e = {"name": str(c["name"]), "status": c["status"]}
+            if isinstance(c.get("log_tail"), str):
+                e["log_tail"] = c["log_tail"][-4000:]
+            out.append(e)
+        if len(out) >= 8:
+            break
+    return out
+
+
+def _reviewer_eval_line(repo, pr):
+    """E2E-25 / E2E-42: the **Reviewer eval:** clause of the summary comment (the ai-review job and the gate job build it the same way)."""
+    cause = llmstate.credential_cause(os.environ.get("AGENTIVE_CI_SECRET_SET"), os.environ.get("AGENTIVE_HEAD_REPO"),
+                                      os.environ.get("GITHUB_REPOSITORY"))
+    return evals.summary_line(repo, pr["base_sha"], pr["head_sha"], cause=cause)
+
+
+SUMMARY_EXTRAS = "summary-extras.json"
+
+
+def _stored_reviewer_eval(repo, pr, work):
+    """E2E-45: the Reviewer eval clause the ai-review job stored for this head (it knows the credential check; the gate job names no
+    secret), else computed here. The artifact comes from the PR's own job, so only one short line that starts with `not ` is shown."""
+    d = common.read_json(os.path.join(work, SUMMARY_EXTRAS))
+    if isinstance(d, dict) and "reviewer_eval" in d:
+        v = d["reviewer_eval"]
+        return v[:400] if isinstance(v, str) and v.startswith("not ") and "\n" not in v else None
+    return _reviewer_eval_line(repo, pr)
+
+
+def ci_run_info(work, head_sha, tool):
+    """Where the CI reviews come from: the run (GITHUB_RUN_ID, GITHUB_RUN_ATTEMPT), the reviewed sha and the session_id the
+    LLM action returned (env AGENTIVE_ACTION_SESSION_ID in the finishing step; kept from the artifact for the same head)."""
+    path = os.path.join(work, "ci-run.json")
+    prior = common.read_json(path) or {}
+    run = {}
+    if os.environ.get("GITHUB_RUN_ID"):
+        run = {"run_id": os.environ["GITHUB_RUN_ID"], "run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT") or "1", "sha": head_sha}
+    session = os.environ.get("AGENTIVE_ACTION_SESSION_ID") or (prior.get("session_id") if (prior.get("run") or {}).get("sha") == head_sha else None)
+    return {"run": run, "session_id": session or None, "tool": tool, "path": path}
+
+
+def ci_reviews(extras, info=None):
+    """The CI review records (source ci): honest fields from review/attest.py, run and, when the action gave one, session_id."""
+    info = info or {}
+    out = []
+    for r in extras.get("reviews") or []:
+        e = {k: r[k] for k in ("role", "tool", "executed_by", "attestation", "context", "verdict", "reviewer_id") if r.get(k)}
+        e["source"] = "ci"
+        if info.get("run"):
+            e["run"] = dict(info["run"])
+        if info.get("session_id"):
+            e["session_id"] = info["session_id"]
+        out.append(e)
+    return out
+
+
+# ---------------------------------------------------------------- ci (ai-review job)
+def cmd_ci(a):
+    repo = repo_root()
+    ctx, slug, pr = ci_context(a, repo, allow_tasks=not a.no_tasks)
+    try:
+        report, extras = pipeline.run(ctx)
+    except pipeline.Pending as p:
+        print_pending(p)
+    rep = write_report(repo, ctx.work_dir, report)
+    st = llmstate.read(ctx.work_dir)
+    if st and st["failed"]:
+        extras["ai_step_failed"] = llmstate.failure_text(st, llmstate.run_url())
+    info = ci_run_info(ctx.work_dir, pr["head_sha"], extras["tool"])
+    common.write_json(info["path"], {k: info[k] for k in ("run", "session_id", "tool")})
+    common.write_json(os.path.join(ctx.work_dir, "reviews.json"), ci_reviews(extras, info))
+    posted_now = 0
+    if a.post:
+        # E2E-26: the reason the AI review did not run (the gate's skip, E2E-11) for the summary comment; E2E-25: the
+        # reviewer-eval line. Display only; neither changes the report.
+        try:
+            extras["ai_review_skipped"] = _skip(repo, ctx.work_dir, pr, (st or {}).get("tool") or _ci_tool(ctx.policy), st)
+        except Exception as e:  # noqa: BLE001 - a display line never fails the job
+            print(f"note: could not tell whether the action skipped the AI review: {e}")
+        try:
+            extras["reviewer_eval"] = _reviewer_eval_line(repo, pr)
+            common.write_json(os.path.join(ctx.work_dir, SUMMARY_EXTRAS), {"reviewer_eval": extras["reviewer_eval"]})     # E2E-45: for the gate
+        except Exception as e:  # noqa: BLE001
+            print(f"note: could not read the reviewer eval cases: {e}")
+    if a.post and slug:
+        posted_ids = set(extras["posted"])
+        for f in fmod.to_post(rep["findings"], posted_ids):
+            try:
+                gh.create_review_comment(slug, pr["number"], pr["head_sha"], f["file"], f["line"], post.finding_comment(f, rep["review_round"]["round"], pr["head_sha"]),
+                                         file_level=bool(f.get("file_level")))
+                posted_now += 1
+            except gh.GhError as e:
+                print(f"note: could not post {f['id']}: {e}")
+        if FULL_REVIEW_LABEL in (pr.get("labels") or []):
+            try:                                     # the label is consumed by this run (LABELTRIGGER): otherwise every later push is a full review
+                gh.remove_label(slug, pr["number"], FULL_REVIEW_LABEL)
+            except gh.GhError as e:
+                print(f"note: could not remove the label {FULL_REVIEW_LABEL}: {e}")
+        try:
+            gh.upsert_issue_comment(slug, pr["number"], post.SUMMARY_MARKER, post.summary_comment(rep, posted_now, extras, final=False))
+        except gh.GhError as e:
+            print(f"note: could not post the summary comment: {e}")
+    print(f"AGENTIVE_REVIEW=done profile=ci tier={rep['rv4']['tier']} findings={len(rep['findings'])} posted={posted_now} "
+          f"report={os.path.relpath(os.path.join(ctx.work_dir, 'review-report.json'), repo)}; NEXT=the agentive-review-gate job decides")
+    return 0
+
+
+# ---------------------------------------------------------------- gate (agentive-review-gate job)
+AI_REVIEW_MISSING = ("no review report from the ai-review job for this head (artifact agentive-review-<head sha> is missing: "
+                     "the job failed or did not run), so no AI review backs this decision and auto-merge stays off")
+AI_REVIEW_NEXT = "open the failed ai-review job log of this head, fix the cause, and re-run the workflow (or push a new commit)"
+
+
+def _ci_tool(source):
+    """The effective CI tool (claude | codex) of a policy source (CITOOL)."""
+    return cfgmod.ci_tool(cfgmod.pipeline_section(source), cfgmod.load_manifest(source).value)
+
+
+def _skip(repo, work, pr, tool, state):
+    """E2E-11: llmstate.workflow_skip for this run (None when the CI produced a review for the head or Claude ran)."""
+    have = bool(independence.accepted_ci_reviews(common.read_json(os.path.join(work, "reviews.json"), []), pr.get("head_sha")))
+    return llmstate.skip_from_env(repo, tool, state, have, pr)
+
+
+def cmd_gate(a):
+    repo = repo_root()
+    ctx, slug, pr = ci_context(a, repo, allow_tasks=False)
+    if a.apply and slug:
+        ctx.kill_switch = lambda tier: _kill_switch(repo, slug, pr, tier)
+    state = llmstate.read(ctx.work_dir)                 # E2E-10b / E2E-11: the recorded state of the ai-review LLM step
+    skip = _skip(repo, ctx.work_dir, pr, (state or {}).get("tool") or _ci_tool(ctx.policy), state)
+    if skip and skip["exempt"]:
+        # E2E-11: the action skipped this run; a failed agentive-independence check whose only problem is the missing CI review
+        # is evaluated again with the exemption here (the job may have run an older script), so the gate ends human_required
+        for c in ctx.checks:
+            if c["name"] == "agentive-independence" and c["status"] == "fail" and \
+                    independence.evaluate(pr, common.read_json(os.path.join(ctx.work_dir, "reviews.json"), []), skip)["result"] == "ok":
+                c["status"] = "pass"
+    # E2E-07 [design judgment]: no report from the ai-review job of this head (its artifact is missing: the job failed or
+    # never ran). RV8 then sees no LLM outputs and stays fail-safe (never pass); the gate says so in plain words.
+    ai_missing = not os.path.exists(os.path.join(ctx.work_dir, "review-report.json"))
+    report, extras = pipeline.run(ctx)
+    rv8 = report["rv8"]
+    if ai_missing:
+        if rv8["decision"] == "pass":                # defensive: a PR without its ai-review report is never merged
+            rv8.update(decision="human_required", check_conclusion="success", auto_merge=False)
+        rv8["reasons"] = list(rv8.get("reasons") or []) + [f"ai_review_missing: {AI_REVIEW_MISSING}"]
+    failed = state if state and state["failed"] else None
+    for code, detail in ((("ai_review_skipped", f"{skip['kind']}: {skip['detail']}"),) if skip else ()) + \
+            ((("ai_step_failed", llmstate.failure_text(failed, llmstate.run_url())),) if failed else ()):
+        if rv8["decision"] == "pass":                # defensive: a PR whose AI review did not run is never merged
+            rv8.update(decision="human_required", check_conclusion="success", auto_merge=False)
+        rv8["reasons"] = list(rv8.get("reasons") or []) + [code, f"{code}: {detail}"]
+        rv8["reason_codes"] = util.uniq(list(rv8.get("reason_codes") or []) + [code])
+    rep = write_report(repo, ctx.work_dir, report)
+    rv8 = rep["rv8"]
+    lines = [f"agentive-review-gate: {rv8['decision']} (tier {rep['rv4']['tier']}, auto_merge {rv8['auto_merge']})"] + \
+            [f"- {r}" for r in post.reason_lines(post.skipped_view(rv8["reasons"], extras.get("llm_problems"), skip,
+                                                                    rep["rv4"].get("reasons"))[0])] + \
+            [post.auto_merge_line(rv8)] + post.required_lines(rep)
+    if skip:
+        print(f"::notice title=agentive AI review skipped::{skip['detail']}. NEXT: {skip['next']}")
+    # E2E-45: ONE view of this decision for the step summary and the sticky summary comment (the ai-review job wrote the comment
+    # before the gate decided; _apply posts it again from this decision, so the comment never states a conclusion the check lacks)
+    view = {"ai_review_skipped": skip, "llm_problems": extras.get("llm_problems"),
+            "ai_step_failed": llmstate.failure_text(failed, llmstate.run_url()) if failed else None}
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        # COMMENTUX: the step summary is markdown for a human (verdict, What to do, Why, Checks, folded codes); the job log
+        # below keeps the plain lines and the AGENTIVE_GATE= line that prstate reads
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+            f.write(post.gate_summary(rep, view))
+    print("\n".join(lines))
+    if a.apply and slug:
+        try:
+            view["reviewer_eval"] = _stored_reviewer_eval(repo, pr, ctx.work_dir)
+        except Exception as e:  # noqa: BLE001 - a display line never fails the job
+            print(f"note: could not read the reviewer eval cases: {e}")
+        _apply(slug, pr, rep, dict(extras, **view), ctx.work_dir)
+    nxt = {"block": (rv8.get("explainer") or {}).get("next_action") if "explainer_missing" in rv8.get("reason_codes", [])
+           else "fix the blocking reasons above and push (or answer each finding with an agentive-reply line)",
+           "human_required": rv1mod.DEPENDENCY_NEXT + " (auto-merge stays off)" if "dependency_change" in rv8.get("reason_codes", [])
+           else "a human reviews and merges (auto-merge stays off)",
+           "pass": "GitHub merges once every merge requirement is met" if rv8["auto_merge"] else "a human merges"}[rv8["decision"]]
+    codes = list(rv8.get("reason_codes") or []) + (["ai_review_missing"] if ai_missing else [])
+    if failed:                                       # E2E-10b: the code, a fixed sentence and the run URL, never the error text
+        url = llmstate.run_url()
+        nxt = f"ai_step_failed:{failed['code']}: {llmstate.sentence(failed)}" + (f" (run {url})" if url else "") + f"; then {nxt}"
+    elif skip:                                       # E2E-11
+        nxt = f"{skip['next']}; then {nxt}" if rv8["decision"] == "block" else skip["next"]
+    elif ai_missing:
+        nxt = f"{AI_REVIEW_NEXT}; then {nxt}"
+    print(f"AGENTIVE_GATE={rv8['decision']} tier={rep['rv4']['tier']} reasons={','.join(codes)}; NEXT={nxt}")
+    return 1 if rv8["decision"] == "block" else 0
+
+
+def _kill_switch(repo, slug, pr, tier):
+    import datetime
+    now = datetime.datetime.now(datetime.timezone.utc)
+    since = now - datetime.timedelta(days=killswitch.WINDOW_DAYS + 1)
+    issues = gh.demotion_issues(slug, killswitch.LABEL)
+    merged = gh.merged_prs(slug, pr["base_ref"], since.strftime("%Y-%m-%dT%H:%M:%SZ"))
+    ref = f"origin/{pr['base_ref']}"
+    subprocess.run(["git", "-C", repo, "fetch", "--no-tags", "--quiet", "origin", pr["base_ref"]], capture_output=True)
+    reverts = gitio.log_messages(repo, ref if gitio.ok(repo, "rev-parse", "--verify", ref) else pr["base_sha"], int(since.timestamp()))
+    merged += _older_targets(slug, merged, reverts)
+    return killswitch.evaluate(tier, pr["author"], now, merged, reverts, issues)
+
+
+def _older_targets(slug, merged, reverts, cap=20):
+    """PRs merged before the window that a revert or hotfix inside it names (V2-17): the window limits when the revert or
+    hotfix happened, never when the reverted PR merged. Reverted merge commits are looked up through the commit's PRs,
+    hotfix_of numbers through the PR itself; at most `cap` lookups per run (API budget, design judgment)."""
+    have = {p.get("merge_commit_sha") for p in merged} | {None}
+    nums = {p["number"] for p in merged}
+    out, calls = [], 0
+    for _sha, _ts, msg in reverts:
+        for full in killswitch.REVERT_RE.findall(msg or ""):
+            if full in have or calls >= cap:
+                continue
+            calls += 1
+            try:
+                for p in gh.prs_for_commit(slug, full):
+                    if p["merge_commit_sha"] == full and p["number"] not in nums:
+                        out.append(p)
+                        nums.add(p["number"])
+                        have.add(full)
+            except gh.GhError as e:
+                print(f"note: kill switch: no PR for reverted commit {full[:12]} ({e})")
+    for p in list(merged):
+        blk, _ = pr_body.block(p.get("body"))
+        hf = (blk or {}).get("hotfix_of")
+        if isinstance(hf, int) and hf not in nums and calls < cap:
+            calls += 1
+            try:
+                got = gh.merged_pull(slug, hf)
+            except gh.GhError as e:
+                print(f"note: kill switch: cannot read hotfixed PR #{hf} ({e})")
+                continue
+            if got:
+                out.append(got)
+                nums.add(hf)
+    return out
+
+
+def _apply(slug, pr, rep, extras, work):
+    rv8 = rep["rv8"]
+    run_url = None
+    if os.environ.get("GITHUB_RUN_ID"):
+        run_url = f"{os.environ.get('GITHUB_SERVER_URL', 'https://github.com')}/{slug}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+    new_body = pr_body.with_pipeline(pr["body"], body_pipeline(rep, run_url), rep["review_round"]["round"],
+                                     ci_reviews(extras, ci_run_info(work, pr["head_sha"], extras["tool"])))
+    try:
+        if new_body is not None and new_body != pr["body"]:
+            gh.patch_pr_body(slug, pr["number"], new_body)     # GITHUB_TOKEN edits start no workflow run [S39]
+    except gh.GhError as e:
+        print(f"note: could not update the PR body: {e}")
+    try:     # E2E-45: the sticky summary comment states the final decision of this gate run
+        gh.upsert_issue_comment(slug, pr["number"], post.SUMMARY_MARKER, post.summary_comment(rep, 0, extras))
+    except gh.GhError as e:
+        print(f"note: could not update the summary comment: {e}")
+    ks = extras.get("kill_switch_result") or {}
+    try:
+        if ks.get("open_issue"):
+            t = rv8["kill_switch"]["tier"]
+            title, body = killswitch.issue_text(t, rv8["kill_switch"]["source"], ks["count"], ks.get("prs") or [])
+            gh.create_issue(slug, title, body, [killswitch.LABEL])
+        if rv8.get("would_auto_merge"):
+            gh.add_labels(slug, pr["number"], [cfgmod.AUTO_MERGE_LABEL])
+        elif cfgmod.AUTO_MERGE_LABEL in (pr.get("labels") or []):
+            gh.remove_label(slug, pr["number"], cfgmod.AUTO_MERGE_LABEL)     # a new head no longer qualifies: the label is stale
+        if rv8["auto_merge"]:
+            gh.enable_auto_merge(slug, pr["number"])
+    except gh.GhError as e:
+        print(f"note: gate side effect failed: {e}")
+
+
+# ---------------------------------------------------------------- independence
+def cmd_independence(a):
+    repo = repo_root()
+    slug = a.repo_slug or gh.slug_from_env(repo)
+    pr = common.read_json(a.pr_json) if a.pr_json else gh.pr_context(slug, a.pr)
+    work = a.work or os.path.join(repo, STATE, "review", f"ci-{pr['head_sha'][:12]}")
+    if slug and not a.pr_json and not os.path.exists(os.path.join(work, "reviews.json")):
+        try:
+            gh.download_artifact(slug, f"agentive-review-{pr['head_sha']}", work)
+        except gh.GhError:
+            pass
+    reviews = common.read_json(os.path.join(work, "reviews.json"), [])
+    skip = None
+    if not independence.exemption(pr) and not independence.accepted_ci_reviews(reviews, pr.get("head_sha")):
+        if pr.get("base_sha") and not gitio.ok(repo, "cat-file", "-e", pr["base_sha"] + "^{commit}"):
+            subprocess.run(["git", "-C", repo, "fetch", "--no-tags", "--quiet", "--depth=1", "origin", pr["base_sha"]], capture_output=True)
+        skip = _skip(repo, work, pr, _ci_tool(lambda p: _read(repo, p)), llmstate.read(work))   # E2E-11
+    res = independence.evaluate(pr, reviews, skip)
+    for n in res["notes"]:
+        print(f"- note: {n}")
+    if res["result"] == "exempt":
+        print(f"- {res['detail']}")
+        print(f"AGENTIVE_INDEPENDENCE=exempt reason={res['code']}; NEXT=a human reviews and merges (the gate never auto-merges this PR)")
+        return 0
+    for p in res["problems"]:
+        print(f"- {p}")
+    ok = res["result"] == "ok"
+    if ok and skip and skip["exempt"]:
+        print(f"::notice title=agentive AI review skipped::{skip['detail']}")
+        print(f"AGENTIVE_INDEPENDENCE=ok note=ci_review_skipped:{skip['kind']}; NEXT={skip['next']}")
+        return 0
+    print(f"AGENTIVE_INDEPENDENCE={'ok' if ok else 'fail'}; NEXT=" + ("none" if ok else
+          "run /pr to write the PR body (## Verification, ## Risk, ## How to revert and the agentive-review block); the review must come from the ai-review job of this head (rerun the workflow if it is missing)"))
+    return 0 if ok else 1
+
+
+# ---------------------------------------------------------------- outer-verbs
+def cmd_outer_verbs(a):
+    repo = repo_root()
+    manifest = cfgmod.load_manifest(lambda p: _read(repo, p)).value
+    conf = cfgmod.load_project_config(lambda p: _read(repo, p)).value
+    require = ((conf.get("stages") or {}).get("RV1") or {}).get("require_checks") or ["lint", "typecheck", "test"]
+    verbs = manifest.get("verbs") or {}
+    verb = os.path.join(repo, ".agents", "bin", "verb")
+    results, failed = [], False
+
+    tails = {}
+
+    def run_verb(name):
+        r = subprocess.run([verb, name], cwd=repo)
+        tails[name] = _log_tail(repo, name)
+        return r.returncode == 0
+
+    setup = verbs.get("setup")
+    if isinstance(setup, dict) and setup.get("cmd"):
+        if not run_verb("setup"):
+            results.append({"name": "setup", "status": "fail"})
+            failed = True
+    for name in [v for v in require if v in ("lint", "typecheck", "test", "build")]:
+        v = verbs.get(name)
+        if failed or not isinstance(v, dict) or v.get("status") == "pending" or not v.get("cmd"):
+            results.append({"name": name, "status": "skipped"})
+            continue
+        ok = run_verb(name)
+        failed = failed or not ok
+        results.append({"name": name, "status": "pass" if ok else "fail"})
+    if a.out:       # the artifact for the ai-review job (V2-09): the verifier reads these instead of running anything
+        common.write_json(a.out, [dict(r, **({"log_tail": tails[r["name"]]} if tails.get(r["name"]) else {})) for r in results])
+    if os.environ.get("GITHUB_OUTPUT"):
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+            f.write("results=" + json.dumps(results, separators=(",", ":")) + "\n")
+    print("AGENTIVE_OUTER_VERBS=" + ",".join(f"{r['name']}:{r['status']}" for r in results) +
+          ("; NEXT=reproduce the failing verb locally with .agents/bin/verb <verb>" if failed else "; NEXT=none"))
+    return 1 if failed else 0
+
+
+def _log_tail(repo, verb, lines=40, limit=4000):
+    """Last lines of the newest .agents/state/logs/<verb>-*.log (the verb wrapper's log), or ''."""
+    d = os.path.join(repo, STATE, "logs")
+    try:
+        names = sorted(n for n in os.listdir(d) if n.startswith(verb + "-") and n.endswith(".log"))
+        with open(os.path.join(d, names[-1]), encoding="utf-8", errors="replace") as f:
+            return "\n".join(f.read().splitlines()[-lines:])[-limit:]
+    except (OSError, IndexError):
+        return ""
+
+
+# ---------------------------------------------------------------- eval (reviewer eval headless runs)
+def cmd_eval(a):
+    repo = repo_root()
+    ensure_commit(repo, a.base)
+    ensure_commit(repo, a.head)
+    head = gitio.rev_parse(repo, a.head)       # the report records a commit sha, never a ref name (V2-15)
+    base = gitio.merge_base(repo, a.base, head) or a.base
+    ctx = pipeline.Ctx(repo, "ci", base, head, a.work, policy=lambda p: _read(repo, p), pr=None, comments=[],
+                       checks=[], allow_tasks=not a.no_tasks, rerun_cmd=_rerun(a, "eval"))
+    try:
+        report, _ = pipeline.run(ctx)
+    except pipeline.Pending as p:
+        print_pending(p)
+    rep = pipeline.strip_private(report)
+    common.write_json(os.path.join(a.work, "review-report.json"), rep)
+    print(f"AGENTIVE_REVIEW=done profile=eval findings={len(rep['findings'])} report={os.path.join(a.work, 'review-report.json')}; NEXT=none")
+    return 0
+
+
+def cmd_rv2(a):
+    repo = repo_root()
+    ensure_commit(repo, a.base)
+    ensure_commit(repo, a.head)
+    base = gitio.merge_base(repo, a.base, a.head) or a.base
+    diff = gitio.Diff(repo, base, a.head)
+
+    def policy(p):
+        return _read(repo, a.rules_file if (a.rules_file and p == "code_review.md") else p)
+    rules_l = cfgmod.load_rules(policy, "code_review.md")
+    manifest = cfgmod.load_manifest(policy).value
+    got, _ = rv2mod.run(diff, diff.name_status(), diff.hunks(), rules_l.value, manifest, {}, rules_problems=rules_l.problems)
+    for key, tag in (("hits", "AGENTIVE_RV2_HIT"), ("shadow_hits", "AGENTIVE_RV2_SHADOW")):
+        for h in got.get(key) or []:
+            print(f"{tag} path={h['path']} layer={h.get('layer', '-')} glob={h['glob']} reason={h['reason']} source={h.get('source', '-')}")
+    for pr in rules_l.problems:
+        print(f"AGENTIVE_RV2_PROBLEM {pr}")
+    print(f"AGENTIVE_RV2=done hits={len(got['hits'])} shadow_hits={len(got.get('shadow_hits') or [])}; "
+          f"NEXT={'none' if not rules_l.problems else 'fix the agentive-review-rules block'}")
+    return 0
+
+
+# ---------------------------------------------------------------- CI helpers
+def cmd_checks(a):
+    out = []
+    if a.outer:
+        try:
+            for c in json.loads(a.outer):
+                if c.get("name") and c.get("status") in ("pass", "fail", "skipped"):
+                    out.append({"name": c["name"], "status": c["status"]})
+        except ValueError:
+            die("--outer is not JSON", "pass the outer-verbs job output results")
+    for item in a.job or []:
+        name, _, res = item.partition("=")
+        st = {"success": "pass", "pass": "pass", "failure": "fail", "fail": "fail", "cancelled": "fail"}.get(res)
+        if st is None and name in (a.must_run or []):
+            st = "fail"                         # GitHub counts a skipped required check as success: the gate does not [V2-08]
+        if st is None and name == "dependency-review" and res == "unavailable":
+            st = "skipped"                      # E2E-31: the action did not complete (not the same as the job not running: no entry)
+        if st:                                  # skipped or empty: the job did not run in this event; keep the earlier result
+            out.append({"name": name, "status": st})
+    common.write_json(a.out, out)
+    print(f"AGENTIVE_CHECKS={','.join(c['name'] + ':' + c['status'] for c in out) or 'none'}; NEXT=pass --checks {a.out}")
+    return 0
+
+
+def cmd_outputs_hash(a):
+    """sha256 over the LLM task outputs (V2-09). The ai-review job records it as a job output right after the LLM step; the gate
+    job recomputes it from the downloaded artifact and drops the outputs when it differs (fail-safe: human_required)."""
+    import hashlib
+    d = os.path.join(a.work, "tasks")
+    h = hashlib.sha256()
+    names = sorted(n for n in os.listdir(d) if n.endswith(".output.json")) if os.path.isdir(d) else []
+    for n in names:
+        with open(os.path.join(d, n), "rb") as f:
+            h.update(n.encode("utf-8") + b"\0" + hashlib.sha256(f.read()).hexdigest().encode("ascii") + b"\n")
+    got = h.hexdigest()
+    if os.environ.get("GITHUB_OUTPUT") and not a.expect:
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+            f.write(f"sha256={got}\n")
+    if a.expect and a.expect != got:
+        for n in names:
+            os.rename(os.path.join(d, n), os.path.join(d, n + ".rejected"))
+        print(f"AGENTIVE_OUTPUTS=rejected expected={a.expect[:12]} got={got[:12]}; NEXT=the LLM outputs are ignored: the gate asks a human")
+    else:
+        print(f"AGENTIVE_OUTPUTS=ok sha256={got} files={len(names)}; NEXT=none")
+    return 0
+
+
+def cmd_llm_state(a):
+    """E2E-10b: record the state of the ai-review LLM step; on failure one ::error annotation with a code and a fixed sentence.
+    E2E-43: AGENTIVE_CI_SECRET_SET (`secrets.<name> != ''` of the credential secrets, never a value) tells a missing secret from
+    a failure that needs the job log."""
+    repo = repo_root()
+    src = lambda p: _read(repo, p)      # noqa: E731
+    tool = _ci_tool(src)
+    auth = cfgmod.ci_auth(cfgmod.pipeline_section(src), tool)
+    st = llmstate.record(tool, os.environ.get("AGENTIVE_LLM_OUTCOME"),
+                         os.environ.get("AGENTIVE_LLM_CONCLUSION"), os.environ.get("AGENTIVE_LLM_EXECUTION_FILE"),
+                         secret_set=os.environ.get("AGENTIVE_CI_SECRET_SET"), head_repo=os.environ.get("AGENTIVE_HEAD_REPO"),
+                         repository=os.environ.get("GITHUB_REPOSITORY"), secrets=llmstate.secret_names(tool, auth))
+    os.makedirs(a.work, exist_ok=True)
+    llmstate.write(a.work, st)
+    if st["failed"]:
+        print(llmstate.annotation(st, llmstate.run_url()))
+        print(f"AGENTIVE_LLM_STATE=failed code={st['code']}; NEXT={llmstate.sentence(st)}")
+    else:
+        print(f"AGENTIVE_LLM_STATE={'ran' if st['started'] else ('not_started' if st['started'] is False else 'unknown')} "
+              f"outcome={st['outcome']}; NEXT=none")
+    return 0
+
+
+def cmd_merge_group(a):
+    import re
+    repo = repo_root()
+    slug = a.repo_slug or gh.slug_from_env(repo)
+    m = re.search(r"/pr-(\d+)-[0-9a-f]+$", a.head_ref or "")
+    if not m:
+        die(f"cannot read the PR number from {a.head_ref!r}", "check the merge_group head_ref format")
+    pr = gh.pr_context(slug, int(m.group(1)))
+    blk, _ = pr_body.block(pr["body"])
+    gate = ((blk or {}).get("pipeline") or {}).get("gate") or {}
+    ok = gate.get("decision") in ("pass", "human_required") and str(gate.get("head_sha", "")) == pr["head_sha"]
+    print(f"AGENTIVE_GATE={'pass' if ok else 'block'} merge_group pr={pr['number']} recorded={gate.get('decision')}@{str(gate.get('head_sha'))[:12]}; "
+          f"NEXT={'none' if ok else 'the PR needs a gate result for its current head: push or re-run the agentive-review workflow'}")
+    return 0 if ok else 1
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(prog="agentive-review", description=__doc__.split("\n\n")[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    p = sub.add_parser("precommit")
+    p.add_argument("--run", choices=["interactive", "non_interactive"])
+    p.add_argument("--human-confirmation", choices=["obtained", "not_obtained"])
+    p.add_argument("--tool", type=attest.tool_arg, choices=list(attest.TOOLS), help="the tool running the review; claude is read as claude_code (default: AGENTIVE_TOOL, CLAUDECODE, else other)")
+    p.add_argument("--work")
+    for name in ("ci", "gate", "independence"):
+        p = sub.add_parser(name)
+        p.add_argument("pr", type=int)
+        p.add_argument("--work")
+        p.add_argument("--repo-slug")
+        p.add_argument("--pr-json", help="PR context JSON instead of gh api (tests)")
+        p.add_argument("--comments-json", help="review comments JSON instead of gh api (tests)")
+        if name in ("ci", "gate"):
+            p.add_argument("--checks", help="JSON list [{name, status: pass|fail|skipped}] of CI check results")
+            p.add_argument("--outer-results", help="outer-verbs artifact (name, status, log_tail): the verifier reads it, nothing is run")
+            p.add_argument("--event")
+            p.add_argument("--fetch-prior", action="store_true", help="download the ai-review artifact of this head")
+        if name == "ci":
+            p.add_argument("--no-tasks", action="store_true", help="finish fail-safe instead of asking for LLM tasks")
+            p.add_argument("--post", action="store_true", help="post inline findings and the summary comment")
+        if name == "gate":
+            p.add_argument("--apply", action="store_true", help="write the PR body, labels, demotion issue, auto-merge")
+    p = sub.add_parser("outer-verbs")
+    p.add_argument("--out")
+    p = sub.add_parser("checks")
+    p.add_argument("--out", required=True)
+    p.add_argument("--outer")
+    p.add_argument("--job", action="append")
+    p.add_argument("--must-run", action="append", help="a job that must have run: skipped or empty counts as failed")
+    p = sub.add_parser("outputs-hash")
+    p.add_argument("--work", required=True)
+    p.add_argument("--expect", help="sha256 recorded by the ai-review job; on a mismatch the LLM outputs are dropped")
+    p = sub.add_parser("llm-state")
+    p.add_argument("--work", required=True)
+    p = sub.add_parser("merge-group")
+    p.add_argument("--head-ref", required=True)
+    p.add_argument("--repo-slug")
+    p = sub.add_parser("rv2")
+    p.add_argument("--base", required=True)
+    p.add_argument("--head", required=True)
+    p.add_argument("--rules-file", help="code_review.md to read the rules block from (default: the working tree)")
+    p = sub.add_parser("eval")
+    p.add_argument("--base", required=True)
+    p.add_argument("--head", required=True)
+    p.add_argument("--work", required=True)
+    p.add_argument("--no-tasks", action="store_true")
+    a = ap.parse_args(argv)
+    fn = {"precommit": cmd_precommit, "ci": cmd_ci, "gate": cmd_gate, "independence": cmd_independence,
+          "outer-verbs": cmd_outer_verbs, "eval": cmd_eval, "rv2": cmd_rv2, "checks": cmd_checks, "merge-group": cmd_merge_group,
+          "outputs-hash": cmd_outputs_hash, "llm-state": cmd_llm_state}[a.cmd]
+    try:
+        return fn(a)
+    except (gitio.GitError, gh.GhError) as e:
+        die(str(e).splitlines()[0][:300], "check the repository state and gh authentication (GH_TOKEN), then rerun")
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

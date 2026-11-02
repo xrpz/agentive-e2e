@@ -1,0 +1,3 @@
+review:
+  managed_code_review_copy: false
+  auto_merge: low_and_medium_risk
