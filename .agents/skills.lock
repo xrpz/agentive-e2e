@@ -1,0 +1,49 @@
+{
+  "skills": {
+    "chain-intent": {
+      "path": ".agents/skills/chain-intent",
+      "sha256": "a42128b05a67675ff4e06db9393266a113a3843f2760a5f8e104530ee678a8ab",
+      "verified_at": "2026-11-02T00:33:34Z"
+    },
+    "chain-plan": {
+      "path": ".agents/skills/chain-plan",
+      "sha256": "94958d30a3406e561f282ce4a4484843733b0ab4e8ade237ed5bc4e890e63ebf",
+      "verified_at": "2026-11-02T00:33:34Z"
+    },
+    "chain-spec": {
+      "path": ".agents/skills/chain-spec",
+      "sha256": "8034649bd6a765ceef3d50a8adadbd094a743ceb82976f0870dd16268d24ca03",
+      "verified_at": "2026-11-02T00:33:34Z"
+    },
+    "distill": {
+      "path": ".agents/skills/distill",
+      "sha256": "e669ec8813322e3634d7f5f95d02bcfdda67d152b4841c3d1787ac8991c2ce81",
+      "verified_at": "2026-11-02T00:33:34Z"
+    },
+    "janitor": {
+      "path": ".agents/skills/janitor",
+      "sha256": "ab728a0f670b259939e665f36f2f0a130f3e0ea305d741a4b6680ca7d0854bb3",
+      "verified_at": "2026-11-02T00:33:34Z"
+    },
+    "pr": {
+      "path": ".agents/skills/pr",
+      "sha256": "1abc903964786aa5cd83e23733bee6e5d0da8c9059a93b23e599e02ed27d953c",
+      "verified_at": "2026-11-02T00:33:34Z"
+    },
+    "pr-feedback": {
+      "path": ".agents/skills/pr-feedback",
+      "sha256": "976fe8dca4fcdfe484b73de73f21586b032b4b44db2f1d44ddd8ed52efb95297",
+      "verified_at": "2026-11-02T00:33:34Z"
+    },
+    "precommit-review": {
+      "path": ".agents/skills/precommit-review",
+      "sha256": "5c528a890ff07c2fbee418a58c4171ce5dda25e5b917dd4ae23722eb525746e7",
+      "verified_at": "2026-11-02T00:33:34Z"
+    },
+    "verify": {
+      "path": ".agents/skills/verify",
+      "sha256": "5bcf7679792c07304277c67b2f05b8e99e731c3130f3f1b089e6986d25a0e71d",
+      "verified_at": "2026-11-02T00:33:34Z"
+    }
+  }
+}

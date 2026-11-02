@@ -1,0 +1,7 @@
+# AGENTIVE START state
+# Managed by agentive; edits inside this region are reported by /agentive:update and replaced only with --force or when you accept them. Keep text you want preserved outside the markers.
+.agents/state/
+.claude/worktrees/
+__pycache__/
+*.egg-info/
+# AGENTIVE END state

@@ -1,0 +1,7 @@
+# agentive-unit: rl.skill.verify
+# design: spec.plugin.invocation.repo_skills, spec.repo_layer.files[f-verify]
+interface:
+  display_name: "verify"
+  short_description: "Run lint, typecheck, test and the other verbs through .agents/bin/verb before every commit"
+policy:
+  allow_implicit_invocation: true

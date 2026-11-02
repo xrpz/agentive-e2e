@@ -1,0 +1,7 @@
+# agentive-unit: rl.skill.distill
+# design: spec.plugin.invocation.distill, spec.repo_layer.files[f-distill]
+interface:
+  display_name: "distill"
+  short_description: "Turn repeated mistakes, review noise and review escapes into one proved check, opened as a tier 2 PR"
+policy:
+  allow_implicit_invocation: true
