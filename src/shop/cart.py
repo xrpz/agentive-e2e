@@ -8,3 +8,10 @@ def total(prices: list[float], discount: float = 0.0) -> float:
     if not 0.0 <= discount <= 1.0:
         raise ValueError("discount must be between 0 and 1")
     return round(sum(prices) * (1.0 - discount), CENTS)
+
+
+def average_price(prices: list[float]) -> float:
+    """Return the mean price of the items, or 0.0 for an empty cart."""
+    if not prices:
+        return 0.0
+    return round(sum(prices) / len(prices), CENTS)
