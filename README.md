@@ -9,3 +9,7 @@ from shop.cart import total
 
 total([10.0, 5.0], discount=0.1)  # 13.5
 ```
+
+## Checks
+
+Run `.agents/bin/verb verify` before every commit. It runs `ruff` (lint) and `pytest` (tests).
